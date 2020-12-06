@@ -280,9 +280,9 @@ function TExpressionCalculator.ProcessConstOperation(Left, Right: TIDExpression;
     Result := TIDIntConstant.CreateWithoutScope(DT, iValue);
   end;
   //////////////////////////////////////////////////////////////
-  function CalcFloat(LValue, RValue: Double; Operation: TOperatorID): TIDConstant;
+  function CalcFloat(LValue, RValue: Extended; Operation: TOperatorID): TIDConstant;
   var
-    fValue: Double;
+    fValue: Extended;
     bValue: Boolean;
     ValueDT: TIDType;
   begin
@@ -297,7 +297,7 @@ function TExpressionCalculator.ProcessConstOperation(Left, Right: TIDExpression;
           if LValue = 0 then
             fValue := System.Math.NaN
           else
-          if fValue < 0 then
+          if LValue < 0 then
             fValue := System.Math.NegInfinity
           else
             fValue := System.Math.Infinity;

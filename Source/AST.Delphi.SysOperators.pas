@@ -162,8 +162,26 @@ type
     function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
   end;
 
+  {implicit Pointer <- Any}
+  TSysImplicitPointerFromAny = class(TSysOpImplicit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
+  end;
+
   {implicit Range <- Any}
   TSysImplicitRangeFromAny = class(TSysOpImplicit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
+  end;
+
+  {implicit Set <- Any}
+  TSysImplicitSetFromAny = class(TSysOpImplicit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration; override;
+  end;
+
+  {implicit nil -> Any}
+  TSysImplicitNullPtrToAny = class(TSysOpImplicit)
   public
     function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
   end;
@@ -257,14 +275,8 @@ type
   /// BINARY
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  {operator Char IN Any}
-  TSysAnsiChar_In = class(TSysOpBinary)
-  public
-    function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
-  end;
-
-  {operator Ordinal IN any}
-  TSysOrdinal_In = class(TSysOpBinary)
+  {operator Ordinal IN Set}
+  TSysOrdinalInSet = class(TSysOpBinary)
   public
     function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
   end;
@@ -541,7 +553,7 @@ end;
 
 function TSysImplicitPointerToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
 begin
-  Result := Dst.DataTypeID = dtPointer;
+  Result := (Dst.DataTypeID = dtPointer);
 end;
 
 { TSysExplicitClassOfFromAny }
@@ -555,10 +567,18 @@ end;
 
 function TSysImplicitArrayToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
 var
-  ElType: TIDType;
+  SrcElType, DstElType: TIDType;
 begin
-  ElType := (Src as TIDArray).ElementDataType;
-  Result := (Dst.DataTypeID in [dtPointer, dtPAnsiChar, dtPWideChar]);
+  SrcElType := TIDArray(Src).ElementDataType;
+  if Dst is TIDArray then
+  begin
+    DstElType := TIDArray(Dst).ElementDataType;
+    Result := (Dst.DataTypeID = dtOpenArray) and (SrcElType = DstElType);
+  end else begin
+    Result :=
+      ((Dst = SYSUnit._PAnsiChar) and (SrcElType = SYSUnit._AnsiChar)) or
+      ((Dst = SYSUnit._PChar) and (SrcElType = SYSUnit._Char));
+  end;
 end;
 
 { TSysExplictPointerFromAny }
@@ -614,18 +634,11 @@ begin
                                                  dtWideString]);
 end;
 
-{ TSysAnsiChar_In }
+{ TSysOrdinalInSet }
 
-function TSysAnsiChar_In.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
+function TSysOrdinalInSet.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
 begin
-  Result := SYSUnit._TrueExpression; // tmp
-end;
-
-{ TSysOrdinal_In }
-
-function TSysOrdinal_In.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
-begin
-  if Right.DataType is TIDArray then
+  if (Right.Declaration is TIDDynArrayConstant) or (Right.DataTypeID = dtSet) then
   begin
     Result := SYSUnit._TrueExpression; // tmp
   end else
@@ -732,6 +745,39 @@ begin
   Result := Src.IsOrdinal;
 end;
 
+
+{ TSysImplicitSetFromAny }
+
+function TSysImplicitSetFromAny.Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration;
+var
+  Vector: TIDDynArrayConstant;
+begin
+  Result := nil;
+  if Src.IsDynArrayConst then begin
+    Vector := Src.AsDynArrayConst;
+    if Vector.CabBeSet then
+      Result := Dst;
+    // and (Vector.ElementType = TIDSet(Dst).BaseType) then
+  end;
+
+end;
+
+{ TSysImplicitNullPtrToAny }
+
+function TSysImplicitNullPtrToAny.Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean;
+begin
+  Result := Dst.IsReferenced or (Dst.DataTypeID = dtProcType);
+end;
+
+{ TSysImplicitPointerFromAny }
+
+function TSysImplicitPointerFromAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
+begin
+  Result := (
+    ((Dst.DataTypeID in [dtPAnsiChar]) and (Src.DataTypeID = dtStaticArray) and (TIDStaticArray(Src).ElementDataType = SYSUnit._AnsiChar)) or
+    ((Dst.DataTypeID in [dtPWideChar]) and (Src.DataTypeID = dtStaticArray) and (TIDStaticArray(Src).ElementDataType = SYSUnit._Char))
+  );
+end;
 
 end.
 

@@ -18,7 +18,7 @@ uses System.SysUtils, System.Classes, System.StrUtils, System.Math, System.Gener
      AST.Intf;
 type
 
-  TExpessionPosition = (ExprNested, ExprLValue, ExprRValue, ExprNestedGeneric);
+  TExpessionPosition = (ExprNested, ExprLValue, ExprRValue, ExprNestedGeneric, ExprType);
 
   TProcSpecification = (
     PS_FORWARD,
@@ -60,6 +60,7 @@ type
   TIDStringConstant = class;
   TIDProcType = class;
   TASTDelphiProc = class;
+  TDlphHelper = class;
 
   TScope = class;
   TStructScope = class;
@@ -112,7 +113,7 @@ type
 
   TIDDeclarationClass = class of TIDDeclaration;
 
-  {The base Declaration class}
+  {base declaration class}
   TIDDeclaration = class(TASTDeclaration)
   private
     FItemType: TIDItemType;
@@ -231,28 +232,29 @@ type
     function FindType(const Name: string): TIDGenericType; inline;
   end;
 
-  {пространство имен}
+  {namespace}
   TIDNameSpace = class(TIDDeclaration)
   private
-    FMembers: TScope;
+    fMembers: TScope;
   public
     constructor Create(Scope: TScope; const Identifier: TIdentifier); override;
     property Members: TScope read FMembers;
   end;
 
-  {модуль}
+  {unit}
   TIDUnit = class(TIDNameSpace)
   private
-    FUnit: TObject;
+    fModule: TASTModule;
   public
-    constructor Create(Scope: TScope; AUnit: TObject);
+    constructor Create(Scope: TScope; AUnit: TASTModule);
   end;
 
-  {тип - базовый класс}
+  {base type class}
   TIDType = class(TIDDeclaration)
   type
     TUnarOperators = array [opAssignment..opNot] of TIDDeclaration;
     TBinarOperators = array [opIn..High(TOperatorID)] of TIDPairList;
+    TSysBinaryOperators = array [opIn..High(TOperatorID)] of TIDOperator;
     TExplistIDList = TAVLTree<TDataTypeId, TIDDeclaration>;
   private
     fElementary: Boolean;
@@ -278,6 +280,7 @@ type
     fUnarOperators: TUnarOperators;
     fBinarOperators: TBinarOperators;
     fBinarOperatorsFor: TBinarOperators;
+    fSysBinaryOperators: TSysBinaryOperators;
     fGenericDescriptor: PGenericDescriptor; // содерижт всю информацию по generic-типу/процедуре
     fGenericNextOverload: TIDType;
     /////////////////////////////////////////////////////////
@@ -287,6 +290,7 @@ type
     fInitProc: TIDProcedure;
     fCopyProc: TIDProcedure;
     fFinalProc: TIDProcedure;
+    fHelper: TDlphHelper;
     function GetOperators(const Op: TOperatorID): TIDPairList;
     function GetOperatorsFor(const Op: TOperatorID): TIDPairList;
     function GetIsReferenced: Boolean; inline;
@@ -366,7 +370,6 @@ type
     procedure OverloadBinarOperator(Op: TOperatorID; Declaration: TIDOperator); overload; inline;
 
     procedure AddBinarySysOperator(Op: TOperatorID; Decl: TIDOperator);
-    procedure AddBinarySysOperatorFor(Op: TOperatorID; Decl: TIDOperator);
 
     procedure CreateStandardOperators; virtual;
 
@@ -380,12 +383,14 @@ type
     property SysExplicitFromAny: TIDOperator read fSysExplicitFromAny;
     property SysImplicitToAny: TIDOperator read FSysImplicitToAny;
     property SysImplicitFromAny: TIDOperator read fSysImplicitFromAny;
+    property SysBinayOperator: TSysBinaryOperators read fSysBinaryOperators;
+    property Helper: TDlphHelper read fHelper write fHelper;
   end;
 
-  {тип - специальный, для обобщенных типов}
+  {special generic type}
   TIDGenericType = class(TIDType)
   private
-    FDefaultValue: TIDExpression;
+    fDefaultValue: TIDExpression;
   public
     constructor Create(Scope: TScope; const ID: TIdentifier); override;
     property DefaultValue: TIDExpression read FDefaultValue write FDefaultValue;
@@ -394,12 +399,13 @@ type
   {alias type}
   TIDAliasType = class(TIDType)
   private
-    FOriginalType: TIDType; // оригинальный тип (не алиас)
-    FLinkedType: TIDType;   // тип на который ссылается алиас
+    fOriginalType: TIDType; // оригинальный тип (не алиас)
+    fLinkedType: TIDType;   // тип на который ссылается алиас
   protected
     function GetActualDataType: TIDType; override;
     function GetOrdinal: Boolean; override;
     function GetIndex: Integer; override;
+    function GetDisplayName: string; override;
   public
     constructor CreateAlias(Scope: TScope; const ID: TIdentifier; OriginalType: TIDType);
     constructor CreateAliasAsSystem(Scope: TScope; const ID: string; SrcType: TIDType);
@@ -409,10 +415,10 @@ type
     property Original: TIDType read FOriginalType;
   end;
 
-  {base referenced type}
+  {base referenced type class}
   TIDRefType = class(TIDType)
   private
-    FReferenceType: TIDType;
+    fReferenceType: TIDType;
     function GetReferenceType: TIDType;
   protected
     function GetDisplayName: string; override;
@@ -453,11 +459,13 @@ type
     constructor CreateAsAnonymous(Scope: TScope; ReferenceType: TIDType); override;
   end;
 
-  {тип - специальный, только для константы nullptr}
+  {special nullptr type}
   TIDNullPointerType = class(TIDPointer)
+  public
+    procedure CreateStandardOperators; override;
   end;
 
-  {тип - ordinal}
+  {base ordinal type class}
   TIDOrdinal = class(TIDType)
   private
     FSignedBound: Boolean;
@@ -474,10 +482,10 @@ type
     property ElementsCount: UInt64 read GetElementsCount;
   end;
 
-  {алиас}
+  {alias (for generics parameters)}
   TIDAlias = class(TIDDeclaration)
   private
-    FOriginalDecl: TIDDeclaration;   // оригинальная декларация (не псевдоним)
+    FOriginalDecl: TIDDeclaration;
   protected
     function GetOriginalDecl: TIDDeclaration; override;
   public
@@ -485,7 +493,15 @@ type
     property Original: TIDDeclaration read FOriginalDecl;
   end;
 
-  {тип - диаппазон}
+  TWithAlias = class(TIDAlias)
+  private
+    fExpression: TIDExpression;
+  public
+    constructor CreateAlias(Scope: TScope; OriginalDecl: TIDDeclaration; Expression: TIDExpression);
+    property Expression: TIDExpression read fExpression;
+  end;
+
+  {range type}
   TIDRangeType = class(TIDOrdinal)
   private
     FRangeType: TIDType;
@@ -499,7 +515,7 @@ type
     property ElementType: TIDType read FRangeType write FRangeType;
   end;
 
-  {тип - перечисление}
+  {enum type}
   TIDEnum = class(TIDOrdinal)
   private
     FItems: TScope;
@@ -515,19 +531,19 @@ type
 
   TStructFlags = set of (StructCompleted);
 
-  {тип - структура (базовый класс)}
+  {base structure type}
   TIDStructure = class(TIDType)
   private
-    FAncestor: TIDStructure;
-    FStaticMembers: TStructScope;  // class (static) members
-    FMembers: TStructScope;        // instance members
+    fAncestor: TIDStructure;
+    fStaticMembers: TStructScope;  // class (static) members
+    fMembers: TStructScope;        // instance members
     fVarSpace: TVarSpace;
     fProcSpace: TProcSpace;
     fStaticVarSpace: TVarSpace;
     fStaticProcSpace: TProcSpace;
-    FStrucFlags: TStructFlags;
-    FDefaultProperty: TIDProperty;
-    FClassOfType: TIDClassOf;
+    fStrucFlags: TStructFlags;
+    fDefaultProperty: TIDProperty;
+    fClassOfType: TIDClassOf;
     function GetHasInitFiels: Boolean;
     procedure SetAncestor(const Value: TIDStructure);
     function GetProcSpace: PProcSpace; inline;
@@ -569,7 +585,7 @@ type
     procedure DecRefCount(RCPath: UInt32); override;
   end;
 
-  {тип - структура}
+  {record type}
   TIDRecord = class(TIDStructure)
   private
     fStaticConstructor: TIDProcedure;
@@ -587,7 +603,7 @@ type
 
   TIDMethods = array of TIDProcedure;
 
-  {тип - класс}
+  {class}
   TIDClass = class(TIDStructure)
   private
     FInterfaces: TList<TIDInterface>;
@@ -612,7 +628,16 @@ type
     procedure CreateStandardOperators; override;
   end;
 
-  {тип - замыкание}
+  {helper type}
+  TDlphHelper = class(TIDStructure)
+  private
+    fTarget: TIDType;
+    procedure SetTarget(const Value: TIDType);
+  public
+    property Target: TIDType read fTarget write SetTarget;
+  end;
+
+  {closure}
   TIDClosure = class(TIDClass)
   public type
     TCapturedVarRec = record
@@ -636,7 +661,7 @@ type
 
   end;
 
-  {тип - интрефейс}
+  {interface}
   TIDInterface = class(TIDStructure)
   private
     FGUID: TGUID;
@@ -647,7 +672,7 @@ type
     property GUID: TGUID read FGUID write FGUID;
   end;
 
-  {тип - массив (базовый класс)}
+  {base array type}
   TIDArray = class(TIDType)
   public
   type
@@ -674,23 +699,25 @@ type
     procedure DecRefCount(RCPath: UInt32); override;
   end;
 
-  {тип - битовый набор}
-  TIDSet = class(TIDArray)
+  {set}
+  TIDSet = class(TIDType)
   private
-    FBaseType: TIDType;
+    fBaseType: TIDOrdinal;
     function GetBitsCount: UInt32; inline;
   protected
     function GetDisplayName: string; override;
     function GetDataSize: Integer; override;
   public
-    constructor CreateAnonymous(Scope: TScope; BaseType: TIDType); reintroduce;
+    constructor CreateAnonymous(Scope: TScope; BaseType: TIDOrdinal); reintroduce;
     constructor Create(Scope: TScope; const ID: TIdentifier); override;
+    procedure CreateStandardOperators; override;
     ////////////////////////////////////////////////////////////////////////////
     property BitsCount: UInt32 read GetBitsCount;
-    property BaseType: TIDType read FBaseType write FBaseType;
+    property BaseType: TIDOrdinal read fBaseType write FBaseType;
     procedure IncRefCount(RCPath: UInt32); override;
   end;
 
+  {static array}
   TIDStaticArray = class(TIDArray)
   public
     constructor CreateAnonymous(Scope: TScope; BaseType: TIDType); reintroduce;
@@ -699,7 +726,7 @@ type
   end;
 
 
-  {тип - динамический массив}
+  {dynamic array}
   TIDDynArray = class(TIDArray)
   private
     function GetDimension(Index: Integer): TIDOrdinal; override;
@@ -711,17 +738,17 @@ type
     ////////////////////////////////////////////////////////////////////////////
   end;
 
-  {тип - строка}
+  {string}
   TIDString = class(TIDDynArray)
   public
     constructor CreateAsSystem(Scope: TScope; const Name: string); override;
   end;
 
-  {тип - вариант}
+  {variant}
   TIDVariant = class(TIDType)
   end;
 
-  {тип - открытый массив}
+  {open array}
   TIDOpenArray = class(TIDDynArray)
   strict private
     {$HINTS OFF}
@@ -749,15 +776,23 @@ type
     ptClassDestructor     // классовый деструктор
   );
 
+  TProcTypeClass = (
+    procStatic,           // simple static proc type, TProc = procedure(...)
+    procMethod,           // method proc type, TProc = procedure(...) of object
+    procReference         // referenced proc type, TProc = reference to procedure(...)
+  );
+
+
   TCallConvention = (ConvNative, ConvRegister, ConvStdCall, ConvCDecl, ConvFastCall);
 
-  {процедурный тип}
+  {procedural type}
   TIDProcType = class(TIDType)
   private
-    FParams: TVariableList;
-    FIsStatic: Boolean;
-    FResultType: TIDType;
-    FCallConv: TCallConvention;
+    fParams: TVariableList;
+    fResultType: TIDType;
+    fCallConv: TCallConvention;
+    fProcClass: TProcTypeClass;
+    function GetIsStatic: Boolean; inline;
   protected
     function GetDisplayName: string; override;
   public
@@ -766,18 +801,14 @@ type
     ////////////////////////////////////////////////////////////////////////
     procedure AddParam(const ID: TIdentifier; DataType: TIDType);
     procedure CreateStandardOperators; override;
-    property Params: TVariableList read FParams write FParams;
-    property ResultType: TIDType read FResultType write FResultType;
-    property IsStatic: Boolean read FIsStatic write FIsStatic;
+    property Params: TVariableList read fParams write fParams;
+    property ResultType: TIDType read fResultType write fResultType;
+    property IsStatic: Boolean read GetIsStatic;
     property CallConv: TCallConvention read FCallConv write FCallConv;
+    property ProcClass: TProcTypeClass read fProcClass write fProcClass;
   end;
 
-  TIDRangeExpression  = record
-    LBExpression: TIDExpression;
-    HBExpression: TIDExpression;
-  end;
-
-  {константа (базовый класс)}
+  {base constant class}
   TIDConstant = class(TIDDeclaration)
   private
     FExplicitDataType: TIDType;
@@ -789,8 +820,6 @@ type
   public
     constructor Create(Scope: TScope; const Identifier: TIdentifier); override;
     procedure AssignValue(Source: TIDConstant); virtual; abstract;
-    // WriteToStream пишет значение константы в Stream фиксированного размера (согласно типу)
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); virtual; abstract;
     property ExplicitDataType: TIDType read FExplicitDataType write SetExplicitDataType;
     function ValueDataType: TDataTypeID; virtual; abstract;
     function ValueByteSize: Integer; virtual; abstract;
@@ -804,7 +833,7 @@ type
     procedure DecRefCount(RCPath: UInt32); override;
   end;
 
-  {константа - базовый класс}
+  {base generic constant class}
   TIDXXXConstant<T> = class(TIDConstant)
   private
     FValue: T;
@@ -814,11 +843,10 @@ type
     constructor CreateAsAnonymous(Scope: TScope; DataType: TIDType; Value: T);
     constructor CreateWithoutScope(DataType: TIDType; Value: T);
     procedure AssignValue(Source: TIDConstant); override;
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); override;
     property Value: T read FValue write FValue;
   end;
 
-  {константа целочисленная}
+  {int constant}
   TIDIntConstant = class(TIDXXXConstant<Int64>)
   public
     function ValueDataType: TDataTypeID; override;
@@ -829,7 +857,7 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {константа специальная = размер обьекта}
+  {todo: deprecated}
   TIDSizeofConstant = class(TIDXXXConstant<TIDType>)
     function ValueByteSize: Integer; override;
     function ValueDataType: TDataTypeID; override;
@@ -841,10 +869,9 @@ type
     procedure DecRefCount(RCPath: UInt32); override;
   end;
 
-  {константа с плавоющей запятой}
+  {float constant}
   TIDFloatConstant = class(TIDXXXConstant<Extended>)
   public
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); override;
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
     function AsInt64: Int64; override;
@@ -853,10 +880,9 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {константа строковая}
+  {string constant}
   TIDStringConstant = class(TIDXXXConstant<string>)
   public
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); override;
     function ValueByteSize: Integer; override;
     function ValueDataType: TDataTypeID; override;
     function AsInt64: Int64; override;
@@ -866,10 +892,9 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {константа символьная}
+  {char constant}
   TIDCharConstant = class(TIDXXXConstant<char>)
   public
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); override;
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
     function AsInt64: Int64; override;
@@ -878,7 +903,7 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {константа булева}
+  {boolean constant}
   TIDBooleanConstant = class(TIDXXXConstant<Boolean>)
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -888,14 +913,14 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {константа массив}
+  {array constant}
   TIDDynArrayConstant = class(TIDXXXConstant<TIDExpressions>)
   private
     FStatic: Boolean;
     function GetLength: Integer; inline;
     function GetElementType: TIDType; inline;
+    function CheckAsSet: Boolean; inline;
   public
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); override;
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
     function AsInt64: Int64; override;
@@ -907,13 +932,20 @@ type
     {статический массив полностью состоит из констант и может размещатся в статической памяти}
     {не статический массив содержит переменные, поэтому может размещатся только в динамической (стек или куча) памяти}
     property ArrayStatic: Boolean read FStatic write FStatic;
+    property CabBeSet: Boolean read CheckAsSet;
     procedure AddItem(const Item: TIDExpression);
   end;
 
   TConstSpace = TSpace<TIDConstant>;
 
-  {константа диаппазон}
-  TIDRangeConstant = class(TIDXXXConstant<TIDRangeExpression>)
+  {subrange constant value record}
+  TSubRangeRecord = record
+    LBExpression: TIDExpression;
+    HBExpression: TIDExpression;
+  end;
+
+  {range constant}
+  TIDRangeConstant = class(TIDXXXConstant<TSubRangeRecord>)
   protected
     function GetDisplayName: string; override;
   public
@@ -925,7 +957,7 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {константа GUID}
+  {guid constant}
   TIDGuidConstant = class(TIDXXXConstant<TGUID>)
   public
     function ValueDataType: TDataTypeID; override;
@@ -934,7 +966,6 @@ type
     function AsInt64: Int64; override;
     function AsVariant: Variant; override;
     function CompareTo(Constant: TIDConstant): Integer; override;
-    //procedure WriteToStream(Stream: TStream; const Package: INPPackage); override;
   end;
 
   TIDRecordConstantField = record
@@ -943,6 +974,7 @@ type
   end;
   TIDRecordConstantFields = array of TIDRecordConstantField;
 
+  {record constant}
   TIDRecordConstant = class(TIDXXXConstant<TIDRecordConstantFields>)
   public
     function ValueDataType: TDataTypeID; override;
@@ -958,7 +990,7 @@ type
     etExpressionList
   );
 
-  {выражение}
+  {expression}
   TIDExpression = class(TPooledObject)
   private
     fDeclaration: TIDDeclaration;     // декларация
@@ -1001,6 +1033,7 @@ type
     function GetIsParam: Boolean;
     function GetText: string;
     function GetAsUnit: TIDUnit; inline;
+    function GetDeclClass: TIDDeclarationClass;
   protected
     function GetDataType: TIDType; virtual;
   public
@@ -1047,6 +1080,7 @@ type
     property AsClosure: TIDClosure read GetAsClosure;
     property AsUnit: TIDUnit read GetAsUnit;
     property CValue: TIDConstant read GetCValue write SetCValue;
+    property DeclClass: TIDDeclarationClass read GetDeclClass;
     property Text: string read GetText;
   end;
 
@@ -1319,7 +1353,7 @@ type
     function GetTMPRef(DataType: TIDType): TIDVariable;
     property TempVars: TItemsStack read FTempVars;
 
-    property NextOverload: TIDProcedure read FNextOverload write FNextOverload;
+    property PrevOverload: TIDProcedure read FNextOverload write FNextOverload;
     property EntryScope: TScope read FEntryScope write SetEntryScope;
     property ParamsScope: TProcScope read FParamsScope write FParamsScope;
     property ParamsCount: Integer read FCount;
@@ -1374,6 +1408,7 @@ type
     function GetDebugIL: string;
     {функция выполняет IL код в compile-time и возвращает константное выражение}
     function CECalc(const Args: TIDExpressions): TIDConstant;
+    function GetAllOverloadSignatures(const LineSeparator: string = #13#10): string;
   end;
 
   TASTDelphiProc = class(TIDProcedure)
@@ -1418,7 +1453,7 @@ type
 
   TScope = class(TIDList)
   private
-    fUnit: TASTModule;             // модуль (индекс модуля в пакете)
+    fUnit: TASTModule;          // модуль (индекс модуля в пакете)
     fParent: TScope;            // Parent scope
     fScopeType: TScopeType;     // Тип scope
     fVarSpace: PVarSpace;       // ссылка на список переменных
@@ -1447,7 +1482,6 @@ type
     procedure RemoveVariable(Declaration: TIDVariable);
     function FindInChilds(const ID: string): TIDDeclaration;
     function FindIDRecurcive(const ID: string): TIDDeclaration; overload; virtual;
-    function FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration; overload; virtual;
     function FindMembers(const ID: string): TIDDeclaration; virtual;
     function GetDeclArray(Recursively: Boolean = False): TIDDeclArray;
     function GetDeclNamesArray(Recursively: Boolean = False): TStrArray;
@@ -1463,22 +1497,22 @@ type
 
   TProcScope = class(TScope)
   private
-    FOuterScope: TScope; // внешняя по отношению к методу, область видимости (секция implementation реализации метода)
+    fOuterScope: TScope; // внешняя по отношению к методу, область видимости (секция implementation реализации метода)
   protected
     function GetScopeClass: TScopeClass; override;
   public
     constructor CreateInDecl(Parent: TScope; VarSpace: PVarSpace; ProcSpace: PProcSpace); reintroduce;
     constructor CreateInBody(Parent: TScope); reintroduce;
     property OuterScope: TScope read FOuterScope write FOuterScope;
-    function FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration; override;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; override;
   end;
 
   TStructScope = class(TScope)
-    FAncestorScope: TScope;
-    FStruct: TIDStructure;
+    fAncestorScope: TScope;
+    fStruct: TIDStructure;
   public
     constructor CreateAsStruct(Parent: TScope; Struct: TIDStructure; VarSpace: PVarSpace; ProcSpace: PProcSpace; DeclUnit: TASTModule); reintroduce;
-    function FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration; override;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; override;
     function FindMembers(const ID: string): TIDDeclaration; override;
     property Struct: TIDStructure read FStruct;
   end;
@@ -1492,12 +1526,12 @@ type
 
   TWithScope = class(TProcScope)
   private
-    FInnerScope: TScope;
-    FExpression: TIDExpression;       // выражение, которое породило данный Scope (то что написано в WITH ... DO)
+    fInnerScope: TScope;
+    fExpression: TIDExpression;       // выражение, которое породило данный Scope (то что написано в WITH ... DO)
   public
     constructor Create(Parent: TScope; Expression: TIDExpression); reintroduce;
     ///////////////////////////////////////
-    function FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration; override;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; override;
     property InnerScope: TScope read FInnerScope write FInnerScope;
     property Expression: TIDExpression read FExpression;
   end;
@@ -1508,12 +1542,12 @@ type
   public
     constructor CreateInDecl(OuterScope, Parent: TScope; VarSpace: PVarSpace; ProcSpace: PProcSpace); reintroduce; overload;
     constructor CreateInDecl(OuterScope, Parent: TScope); overload;
-    function FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration; override;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; override;
   end;
 
   TImplementationScope = class(TScope)
   private
-    FIntfScope: TScope;
+    fIntfScope: TScope;
   protected
     function GetScopeClass: TScopeClass; override;
   public
@@ -1803,20 +1837,6 @@ begin
   inherited;
 end;
 
-function TScope.FindIDRecurcive(const ID: string): TIDDeclaration;
-var
-  sc: TScope;
-begin
-  sc := Self;
-  repeat
-    Result := sc.FindID(ID);
-    if Assigned(Result) then Exit;
-    Result := sc.FindInChilds(ID);
-    if Assigned(Result) then Exit;
-    sc := sc.FParent;
-  until sc = nil;
-end;
-
 procedure TScope.AddScope(Scope: TScope);
 var
   c: Integer;
@@ -1876,10 +1896,8 @@ begin
   FVarSpace.Add(Declaration);
 end;
 
-function TScope.FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration;
+function TScope.FindIDRecurcive(const ID: string): TIDDeclaration;
 begin
-  Expression := nil;
-
   // ищим только в себе
   Result := FindID(ID);
   if Assigned(Result) then
@@ -1892,7 +1910,7 @@ begin
 
   // если есть родитель - ищем в нем
   if Assigned(FParent) then
-    Result := FParent.FindIDRecurcive(ID, Expression);
+    Result := FParent.FindIDRecurcive(ID);
 end;
 
 function TScope.FindInChilds(const ID: string): TIDDeclaration;
@@ -2062,7 +2080,7 @@ end;
 function TIDDeclaration.GetUnitID: Integer;
 begin
   if Assigned(FScope) then
-    Result := TNPUnit(FScope.DeclUnit).UnitID
+    Result := TPascalUnit(FScope.DeclUnit).UnitID
   else begin
     AbortWorkInternal('Scope not assigned');
     Result := -1;
@@ -2232,7 +2250,7 @@ begin
     AType2 := Decl2.DataType.ActualDataType;
     if AType1 <> AType2 then
     begin
-      if (AType1.DataTypeID = dtDynArray) and (AType2.DataTypeID = dtDynArray) then
+      if (AType1.DataTypeID = dtOpenArray) and (AType2.DataTypeID = dtOpenArray) then
       begin
         if TIDArray(AType1).ElementDataType <> TIDArray(AType2).ElementDataType then
           Exit(False);
@@ -2296,6 +2314,18 @@ end;
 procedure TIDProcedure.Warning(const Message: string; const Params: array of const; const TextPosition: TTextPosition);
 begin
   TASTDelphiUnit(Module).Warning(Message, Params, TextPosition);
+end;
+
+function TIDProcedure.GetAllOverloadSignatures(const LineSeparator: string): string;
+var
+  Decl: TIDProcedure;
+begin
+  Result := DisplayName;
+  Decl := PrevOverload;
+  while Assigned(Decl) do begin
+    Result := Result + LineSeparator + Decl.DisplayName;
+    Decl := Decl.PrevOverload;
+  end;
 end;
 
 function TIDProcedure.GetDebugIL: string;
@@ -2407,10 +2437,11 @@ procedure TIDProcedure.CreateProcedureTypeIfNeed(Scope: TScope);
 begin
   if not Assigned(FDataType) then
   begin
-    FDataType := TIDProcType.CreateAsAnonymous(Scope);
-    TIDProcType(FDataType).FParams := ExplicitParams;
-    TIDProcType(FDataType).FResultType := ResultType;
-    TIDProcType(FDataType).IsStatic := not Assigned(Struct);
+    fDataType := TIDProcType.CreateAsAnonymous(Scope);
+    TIDProcType(fDataType).fParams := ExplicitParams;
+    TIDProcType(fDataType).fResultType := ResultType;
+    if Assigned(Struct) then
+      TIDProcType(fDataType).ProcClass := procMethod;
   end;
 end;
 
@@ -2920,16 +2951,16 @@ end;
 
 procedure TIDType.OverloadExplicitFromAny(const Op: TIDOperator);
 begin
-  if Assigned(fSysExplicitFromAny) then
-    ERROR_OPERATOR_ALREADY_OVERLOADED(opExplicit, Self, Op, TextPosition);
+//  if Assigned(fSysExplicitFromAny) then
+//    ERROR_OPERATOR_ALREADY_OVERLOADED(opExplicit, Self, Op, TextPosition);
 
   fSysExplicitFromAny := Op;
 end;
 
 procedure TIDType.OverloadExplicitToAny(const Op: TIDOperator);
 begin
-  if Assigned(fSysExplicitToAny) then
-    ERROR_OPERATOR_ALREADY_OVERLOADED(opExplicit, Self, Op, TextPosition);
+//  if Assigned(fSysExplicitToAny) then
+//    ERROR_OPERATOR_ALREADY_OVERLOADED(opExplicit, Self, Op, TextPosition);
 
   fSysExplicitToAny := Op;
 end;
@@ -2975,17 +3006,14 @@ end;
 
 procedure TIDType.OverloadImplicitToAny(const Op: TIDOperator);
 begin
-  if Assigned(FSysImplicitToAny) then
-    ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Self, Op, TextPosition);
+//  if Assigned(FSysImplicitToAny) then
+//    ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Self, Op, TextPosition);
 
   FSysImplicitToAny := Op;
 end;
 
 procedure TIDType.OverloadImplicitFromAny(const Op: TIDOperator);
 begin
-  if Assigned(FSysImplicitFromAny) then
-    ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Self, Op, TextPosition);
-
   FSysImplicitFromAny := Op;
 end;
 
@@ -3000,33 +3028,11 @@ begin
 end;
 
 procedure TIDType.AddBinarySysOperator(Op: TOperatorID; Decl: TIDOperator);
-var
-  List: TIDPairList;
-  ExistKey: TIDPairList.PAVLNode;
 begin
-  List := FBinarOperators[Op];
-  if not Assigned(List) then begin
-    List := TIDPairList.Create;
-    FBinarOperators[Op] := List;
-  end;
-  ExistKey := List.InsertNode(nil, Decl);
-  if Assigned(ExistKey) and (TIDDeclaration(ExistKey.Data) <> SYSUnit._Boolean) then
+  if Assigned(fSysBinaryOperators[Op]) then
     ERROR_OPERATOR_ALREADY_OVERLOADED(Op, Self, nil, TTextPosition.Empty);
-end;
 
-procedure TIDType.AddBinarySysOperatorFor(Op: TOperatorID; Decl: TIDOperator);
-var
-  List: TIDPairList;
-  ExistKey: TIDPairList.PAVLNode;
-begin
-  List := FBinarOperatorsFor[Op];
-  if not Assigned(List) then begin
-    List := TIDPairList.Create;
-    FBinarOperatorsFor[Op] := List;
-  end;
-  ExistKey := List.InsertNode(nil, Decl);
-  if Assigned(ExistKey) and (TIDDeclaration(ExistKey.Data) <> SYSUnit._Boolean) then
-    ERROR_OPERATOR_ALREADY_OVERLOADED(Op, Self, nil, TTextPosition.Empty);
+  fSysBinaryOperators[Op] := Decl;
 end;
 
 function TIDType.BinarOperator(Op: TOperatorID; Right: TIDType): TIDType;
@@ -3450,6 +3456,11 @@ begin
     Result := Dt.DisplayName
   else
     Result := '<NULL>';
+end;
+
+function TIDExpression.GetDeclClass: TIDDeclarationClass;
+begin
+  Result := TIDDeclarationClass(fDeclaration.ClassType);
 end;
 
 function TIDExpression.GetDisplayName: string;
@@ -4135,6 +4146,7 @@ begin
   OverloadBinarOperator2(opEqual, Self, SYSUnit._Boolean);
   OverloadBinarOperator2(opNotEqual, Self, SYSUnit._Boolean);
   OverloadImplicitToAny(SYSUnit.Operators.ImplicitArrayToAny);
+  AddBinarySysOperator(opIn, SYSUnit.Operators.Ordinal_In_Set);
 end;
 
 constructor TIDArray.CreateAnonymousStatic1Dim(Scope: TScope; ElementDataType: TIDType; Length: Integer; out BoundType: TIDOrdinal);
@@ -4340,7 +4352,7 @@ end;
 constructor TIDPointer.Create(Scope: TScope; const ID: TIdentifier);
 begin
   inherited Create(Scope, ID);
-  DataTypeID := dtPointer;
+  fDataTypeID := dtPointer;
   TypeKind := tkRefernce;
   CreateStandardOperators;
 end;
@@ -4348,14 +4360,15 @@ end;
 constructor TIDPointer.CreateAsAnonymous(Scope: TScope; ReferenceType: TIDType);
 begin
   inherited CreateAsAnonymous(Scope, ReferenceType);
-  FDataTypeID := dtPointer;
+  fDataTypeID := dtPointer;
   CreateStandardOperators;
 end;
 
 constructor TIDPointer.CreateAsSystem(Scope: TScope; const Name: string);
 begin
   inherited;
-  FDataTypeID := dtPointer;
+  fDataTypeID := dtPointer;
+  CreateStandardOperators;
 end;
 
 procedure TIDPointer.CreateStandardOperators;
@@ -4392,6 +4405,8 @@ begin
 
   OverloadImplicitToAny(SYSUnit.Operators.ImplicitPointerToAny);
   OverloadExplicitToAny(SYSUnit.Operators.ExplicitPointerToAny);
+
+  OverloadImplicitFromAny(SYSUnit.Operators.ImplicitPointerFromAny);
   OverloadExplicitFromAny(SYSUnit.Operators.ExplicitPointerFromAny);
 end;
 
@@ -4532,21 +4547,34 @@ end;
 constructor TIDSet.Create(Scope: TScope; const ID: TIdentifier);
 begin
   inherited Create(Scope, ID);
-  FElementDataType := SYSUnit._Boolean;
-  FDataTypeID := dtSet;
+  fDataTypeID := dtSet;
+  if Assigned(SYSUnit) then
+    CreateStandardOperators;
 end;
 
-constructor TIDSet.CreateAnonymous(Scope: TScope; BaseType: TIDType);
+constructor TIDSet.CreateAnonymous(Scope: TScope; BaseType: TIDOrdinal);
 begin
   inherited CreateAsAnonymous(Scope);
-  FElementDataType := SYSUnit._Boolean;
-  FDataTypeID := dtSet;
-  FBaseType := BaseType;
+  fDataTypeID := dtSet;
+  fBaseType := BaseType;
+  if Assigned(SYSUnit) then
+    CreateStandardOperators;
+end;
+
+procedure TIDSet.CreateStandardOperators;
+begin
+  inherited;
+  OverloadImplicitTo(Self);
+  OverloadBinarOperator2(opEqual, Self, SYSUnit._Boolean);
+  OverloadBinarOperator2(opNotEqual, Self, SYSUnit._Boolean);
+  OverloadImplicitToAny(SYSUnit.Operators.ImplicitArrayToAny);
+  AddBinarySysOperator(opIn, SYSUnit.Operators.Ordinal_In_Set);
+//  OverloadExplicitFromAny(SYSUnit.Operators.ImplicitSetFromAny);
 end;
 
 function TIDSet.GetBitsCount: UInt32;
 begin
-  Result := FDimensions[0].ElementsCount;
+  Result := fBaseType.ElementsCount;
 end;
 
 function TIDSet.GetDataSize: Integer;
@@ -4615,6 +4643,12 @@ end;
 function TIDDynArrayConstant.ValueDataType: TDataTypeID;
 begin
   Result := dtStaticArray;
+end;
+
+function TIDDynArrayConstant.CheckAsSet: Boolean;
+begin
+  // todo: add check for unique values
+  Result := ElementType.IsOrdinal;
 end;
 
 function TIDDynArrayConstant.CompareTo(Constant: TIDConstant): Integer;
@@ -4839,6 +4873,12 @@ begin
   Result := FOriginalType;
 end;
 
+function TIDAliasType.GetDisplayName: string;
+begin
+  Result := inherited GetDisplayName;
+  Result := '(' + fOriginalType.DisplayName + ')';
+end;
+
 function TIDAliasType.GetIndex: Integer;
 begin
   Result := FOriginalType.SpaceIndex;
@@ -5047,17 +5087,16 @@ begin
   Parent.AddChild(Self);
 end;
 
-function TWithScope.FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration;
+function TWithScope.FindIDRecurcive(const ID: string): TIDDeclaration;
 begin
   Result := FInnerScope.FindMembers(ID);
   if Assigned(Result) then begin
-    Expression := FExpression;
+    //Expression := FExpression; todo: with !!!!
     Exit;
   end;
-  Expression := nil;
-  Result := FOuterScope.FindIDRecurcive(ID, Expression);
+  Result := FOuterScope.FindIDRecurcive(ID);
   if not Assigned(Result) then
-    Result := inherited FindIDRecurcive(ID, Expression);
+    Result := inherited FindIDRecurcive(ID);
 end;
 
 { TIDOpenArray }
@@ -5172,9 +5211,16 @@ begin
     else
       Result := 'procedure(' + Result + ')';
 
-    if not FIsStatic then
-      Result := Result + ' of object';
+    case fProcClass of
+      procMethod: Result := Result + ' of object';
+      procReference: Result := 'reference to ' + Result;
+    end;
   end;
+end;
+
+function TIDProcType.GetIsStatic: Boolean;
+begin
+  Result := fProcClass = procStatic;
 end;
 
 { TIDRangeConstant }
@@ -5247,11 +5293,11 @@ begin
   Result := scProc;
 end;
 
-function TProcScope.FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration;
+function TProcScope.FindIDRecurcive(const ID: string): TIDDeclaration;
 begin
-  Result := inherited FindIDRecurcive(ID, Expression);
+  Result := inherited FindIDRecurcive(ID);
   if not Assigned(Result) and Assigned(FOuterScope) then
-    Result := FOuterScope.FindIDRecurcive(ID, Expression);
+    Result := FOuterScope.FindIDRecurcive(ID);
 end;
 
 { TIDClassType }
@@ -5361,15 +5407,12 @@ begin
   FOuterScope := OuterScope;
 end;
 
-function TMethodScope.FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration;
+function TMethodScope.FindIDRecurcive(const ID: string): TIDDeclaration;
 begin
-  Result := inherited FindIDRecurcive(ID, Expression);
+  Result := inherited FindIDRecurcive(ID);
   if Assigned(Result) then
-  begin
-    // Expression := FExpression; // ???????
     Exit;
-  end;
-  Result := FOuterScope.FindIDRecurcive(ID, Expression);
+  Result := FOuterScope.FindIDRecurcive(ID);
 end;
 
 { TIDField }
@@ -5557,13 +5600,13 @@ end;
 
 { TIDUnit }
 
-constructor TIDUnit.Create(Scope: TScope; AUnit: TObject);
+constructor TIDUnit.Create(Scope: TScope; AUnit: TASTModule);
 begin
   CreateFromPool;
   FScope := Scope;
-  FID := TNPUnit(AUnit)._ID;
-  FUnit := AUnit;
-  FMembers := TNPUnit(AUnit).IntfScope;
+  FID := TPascalUnit(AUnit)._ID;
+  fModule := AUnit;
+  FMembers := TPascalUnit(AUnit).IntfScope;
   ItemType := itUnit;
 end;
 
@@ -5644,11 +5687,11 @@ begin
     FAncestorScope := Struct.Ancestor.Members;
 end;
 
-function TStructScope.FindIDRecurcive(const ID: string; out Expression: TIDExpression): TIDDeclaration;
+function TStructScope.FindIDRecurcive(const ID: string): TIDDeclaration;
 begin
-  Result := inherited FindIDRecurcive(ID, Expression);
+  Result := inherited FindIDRecurcive(ID);
   if not Assigned(Result) and Assigned(FAncestorScope) then
-    Result := FAncestorScope.FindIDRecurcive(ID, Expression);
+    Result := FAncestorScope.FindIDRecurcive(ID);
 end;
 
 function TStructScope.FindMembers(const ID: string): TIDDeclaration;
@@ -5929,6 +5972,36 @@ end;
 function TUnknownIDExpression.GetDisplayName: string;
 begin
   Result := Format('Unknown identifier at %d : %d', [FTextPosition.Row, FTextPosition.Col]);
+end;
+
+{ TIDHelper }
+
+procedure TDlphHelper.SetTarget(const Value: TIDType);
+begin
+  fTarget := Value;
+  if Value is TIDStructure then
+  begin
+    fMembers.FAncestorScope := TIDStructure(Value).Members;
+    fAncestor := TIDStructure(Value);
+  end;
+end;
+
+{ TWithAlias }
+
+constructor TWithAlias.CreateAlias(Scope: TScope; OriginalDecl: TIDDeclaration; Expression: TIDExpression);
+begin
+  inherited Create(Scope, OriginalDecl.ID);
+  fItemType := itAlias;
+  fOriginalDecl := OriginalDecl;
+  fExpression := Expression;
+end;
+
+{ TIDNullPointerType }
+
+procedure TIDNullPointerType.CreateStandardOperators;
+begin
+  inherited;
+  OverloadImplicitToAny(SYSUnit.Operators.ImplicitNullPtrToAny);
 end;
 
 initialization

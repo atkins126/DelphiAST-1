@@ -12,7 +12,7 @@ type
     token_unknown {= -1},           // unknown token
     token_eof {= 0},                // end of file
     token_identifier,               // some id
-    token_ambiguous,                // ambiguous token: id or keyword
+    token_id_keyword,               // ambiguous token: id or keyword
 
     token_numbersign,               // #
     token_semicolon,                // ;
@@ -111,8 +111,6 @@ type
     token_mod,                      // keyword: mod
     token_shl,                      // keyword: shl
     token_shr,                      // keyword: shr
-    token_rol,                      // keyword: rol
-    token_ror,                      // keyword: ror
 
     token_as,                       // keyword: as
     token_for,                      // keyword: for
@@ -122,6 +120,7 @@ type
     token_deprecated,               // keyword: depricated
     token_while,                    // keyword: while
     token_weak,                     // keyword: weak
+    token_reference,                // keyword: reference
     token_repeat,                   // keyword: repeat
     token_reintroduce,              // keyword: reintroduce
     token_until,                    // keyword: until
@@ -299,7 +298,6 @@ end;
 
 procedure TDelphiLexer.ParseCharCodeSymbol;
 var
-  Token: PCharToken;
   HexStr: string;
 begin
   if Length(fOriginalToken) > 1 then
@@ -337,7 +335,7 @@ begin
   inherited Create(Source);
   IdentifireID := ord(token_identifier);
   EofID := ord(token_eof);
-  AmbiguousId := ord(token_ambiguous);
+  AmbiguousId := ord(token_id_keyword);
   TokenCaptions.AddObject('end of file', TObject(token_eof));
   TokenCaptions.AddObject('identifier', TObject(token_identifier));
   SeparatorChars := '#$ '''#9#10#13'%^&*@()+-{}[]\/,.;:<>=~!?';
@@ -399,7 +397,7 @@ begin
   RegisterToken('div', token_div);
   RegisterToken('destructor', token_destructor);
   RegisterToken('deprecated', token_deprecated);
-  RegisterToken('default', token_default, TTokenClass.AmbiguousPriorityIdentifier);
+  RegisterToken('default', token_default, TTokenClass.Ambiguous);
   RegisterToken('dynamic', token_dynamic);
   RegisterToken('delayed', token_delayed);
   RegisterToken('end', token_end);
@@ -448,15 +446,14 @@ begin
   RegisterToken('public', token_public);
   RegisterToken('published', token_published);
   RegisterToken('packed', token_packed);
-  RegisterToken('platform', token_platform);
+  RegisterToken('platform', token_platform, TTokenClass.Ambiguous);
   RegisterToken('raise', token_raise);
   RegisterToken('read', token_read);
   RegisterToken('record', token_record);
+  RegisterToken('reference', token_reference, TTokenClass.Ambiguous);
   RegisterToken('repeat', token_repeat);
   RegisterToken('resourcestring', token_resourcestring);
   RegisterToken('reintroduce', token_reintroduce);
-  RegisterToken('rol', token_rol);
-  RegisterToken('ror', token_ror);
   RegisterToken('set', token_set);
   RegisterToken('shl', token_shl);
   RegisterToken('shr', token_shr);

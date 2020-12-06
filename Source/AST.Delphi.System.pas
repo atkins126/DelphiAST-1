@@ -74,6 +74,7 @@ type
     ImplicitStringToPChar,
     ImplicitAnsiStringToString,
     ImplicitPointerToAny,
+    ImplicitPointerFromAny,
     ImplicitUntypedFromAny,
     ImplicitClosureToTMethod,
     ImplicitCharToAnsiString,
@@ -82,7 +83,9 @@ type
     ImplicitAnsiCharToChar,
     ImplicitMetaClassToGUID,
     ImplicitClassToClass,
-    ImplicitArrayToAny
+    ImplicitArrayToAny,
+    ImplicitSetFromAny,
+    ImplicitNullPtrToAny
 
     : TIDOperator;
     // explicits
@@ -103,8 +106,7 @@ type
     // any cast
     IsOrdinal: TIDOperator;
     // in
-    Ordinal_In,
-    AnsiChar_In
+    Ordinal_In_Set
     : TIDOperator;
     // add
     StaticArray_Add
@@ -147,7 +149,6 @@ type
     procedure RegisterTypes;
     procedure RegisterBuiltinFunctions;
     procedure SystemFixup;
-    procedure AddSystemOperators;
     procedure InsertToScope(Declaration: TIDDeclaration); overload;
     function RegisterType(const TypeName: string; TypeClass: TIDTypeClass; DataType: TDataTypeID): TIDType;
     function RegisterTypeCustom(const TypeName: string; TypeClass: TIDTypeClass; DataType: TDataTypeID): TIDType;
@@ -639,30 +640,6 @@ begin
   AddBinarOperator(opSubtract, _Variant, _Variant, _Variant);
 end;
 
-procedure TSYSTEMUnit.AddSystemOperators;
-begin
-  // IN operator
-  _AnsiChar.AddBinarySysOperator(opIn, Operators.AnsiChar_In);
-  _Char.AddBinarySysOperator(opIn, Operators.AnsiChar_In);
-
-  // system IN operator for ordinal types
-  _Int8.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-  _Int16.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-  _Int32.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-  _UInt8.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-  _UInt16.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-  _UInt32.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-  _Boolean.AddBinarySysOperator(opIn, Operators.Ordinal_In);
-
-  // IntDiv
-  _Int8.AddBinarySysOperatorFor(opIntDiv, Operators.Ptr_IntDiv_Int);
-  _Int16.AddBinarySysOperatorFor(opIntDiv, Operators.Ptr_IntDiv_Int);
-  _Int32.AddBinarySysOperatorFor(opIntDiv, Operators.Ptr_IntDiv_Int);
-  _UInt8.AddBinarySysOperatorFor(opIntDiv, Operators.Ptr_IntDiv_Int);
-  _UInt16.AddBinarySysOperatorFor(opIntDiv, Operators.Ptr_IntDiv_Int);
-  _UInt32.AddBinarySysOperatorFor(opIntDiv, Operators.Ptr_IntDiv_Int);
-end;
-
 procedure TSYSTEMUnit.AddAddOperators;
 begin
   AddBinarOperator(opAdd, _Int8, [_Int8, _UInt8], _Int8);
@@ -925,6 +902,18 @@ begin
   fDecls._PointerType := RegisterPointer('Pointer', nil);
   //===============================================================
 
+  // nil constant
+  fDecls._NullPtrType := TIDNullPointerType.CreateAsSystem(IntfScope, 'null ptr');
+  fDecls._NullPtrConstant := TIDIntConstant.Create(IntfScope, Identifier('nil'), fDecls._NullPtrType, 0);
+  fDecls._NullPtrExpression := TIDExpression.Create(fDecls._NullPtrConstant);
+  IntfScope.InsertID(fDecls._NullPtrConstant);
+
+  // Untyped reference
+  fDecls._UntypedReference := TIDPointer.CreateAsSystem(IntfScope, 'Untyped reference');
+  IntfScope.InsertID(fDecls._UntypedReference);
+  fDecls._UntypedReference.OverloadImplicitFromAny(Operators.ImplicitUntypedFromAny);
+  fDecls._UntypedReference.OverloadExplicitToAny(Operators.ExplicitUntypedToAny);
+
   // Delphi system aliases
   RegisterTypeAlias('LongInt', _Int32);
   RegisterTypeAlias('LongWord', _UInt32);
@@ -981,7 +970,6 @@ begin
   AddLogicalOperators;
   AddBitwiseOperators;
   AddCompareOperators;
-  AddSystemOperators;
 end;
 
 function TSYSTEMUnit.RegisterVariable(Scope: TScope; const Name: string; DataType: TIDType): TIDVariable;
@@ -993,7 +981,7 @@ end;
 
 procedure TSYSTEMUnit.SearchSystemTypes;
 begin
-  fDecls._TObject := GetPublicClass('TObject');
+//  fDecls._TObject := GetPublicClass('TObject');
 {  FException := GetPublicClass('Exception');
   FEAssertClass := GetPublicClass('EAssert');
   FTypeIDType := GetPublicType('TDataTypeID');}
@@ -1084,7 +1072,7 @@ end;
 
 function TSYSTEMUnit.Compile(RunPostCompile: Boolean = True): TCompilerResult;
 begin
-  Result := CompileFail;
+  Result := CompileInProgress;
   try
     RegisterBuiltinFunctions;
     SystemFixup;
@@ -1092,7 +1080,7 @@ begin
     if Result = CompileSuccess then
     begin
       SearchSystemTypes;
-      fCompiled := true;
+      fCompiled := CompileSuccess;
     end;
   except
     on e: ECompilerStop do Exit;
@@ -1119,24 +1107,14 @@ begin
   fDecls._Void := TIDType.CreateAsSystem(IntfScope, 'Void');
   fDecls._Void.DataTypeID := TDataTypeID(dtUnknown);
 
-  // nil constant
-  fDecls._NullPtrType := TIDNullPointerType.CreateAsSystem(IntfScope, 'null ptr');
-  fDecls._NullPtrConstant := TIDIntConstant.Create(IntfScope, Identifier('nil'), fDecls._NullPtrType, 0);
-  fDecls._NullPtrExpression := TIDExpression.Create(fDecls._NullPtrConstant);
-  IntfScope.InsertID(fDecls._NullPtrConstant);
 
-  // Untyped reference
-  fDecls._UntypedReference := TIDPointer.CreateAsSystem(IntfScope, 'Untyped reference');
-  IntfScope.InsertID(fDecls._UntypedReference);
-  fDecls._UntypedReference.OverloadImplicitFromAny(Operators.ImplicitUntypedFromAny);
-  fDecls._UntypedReference.OverloadExplicitToAny(Operators.ExplicitUntypedToAny);
 
   fDecls._OrdinalType := TIDOrdinal.CreateAsSystem(IntfScope, 'ordinal');
 
   RegisterTypes;
-  fDecls._PointerType.CreateStandardOperators;
-  fDecls._PAnsiChar.CreateStandardOperators;
-  fDecls._PChar.CreateStandardOperators;
+//  fDecls._PointerType.CreateStandardOperators;
+//  fDecls._PAnsiChar.CreateStandardOperators;
+//  fDecls._PChar.CreateStandardOperators;
 
   fArrayType := TIDArray.CreateAsSystem(IntfScope, 'array');
 end;
@@ -1210,6 +1188,7 @@ begin
   ImplicitStringToPChar := TSysImplicitStringToPChar.CreateAsSystem(Scope);
   ImplicitAnsiStringToString := TSysImplicitAnsiStringToString.CreateAsSystem(Scope);
   ImplicitPointerToAny := TSysImplicitPointerToAny.CreateAsSystem(Scope);
+  ImplicitPointerFromAny := TSysImplicitPointerFromAny.CreateAsSystem(Scope);
   ImplicitUntypedFromAny := TSysImplicitUntypedFromAny.CreateAsSystem(Scope);
   ImplicitClosureToTMethod := TSysImplicitClosureToTMethod.CreateAsSystem(Scope);
   ImplicitCharToAnsiString := TSysImplicitCharToAnsiString.CreateAsSystem(Scope);
@@ -1219,6 +1198,8 @@ begin
   ImplicitMetaClassToGUID := TSysImplicitMetaClassToGUID.CreateAsSystem(Scope);
   ImplicitClassToClass := TSysImplicitClassToClass.CreateAsSystem(Scope);
   ImplicitArrayToAny := TSysImplicitArrayToAny.CreateAsSystem(Scope);
+  ImplicitSetFromAny := TSysImplicitSetFromAny.CreateAsSystem(Scope);
+  ImplicitNullPtrToAny := TSysImplicitNullPtrToAny.CreateAsSystem(Scope);
   // explicit
   ExplicitStringFromAny := TSysExplicitStringFromAny.CreateAsSystem(Scope);
   ExplicitAnsiStringFromAny := TSysExplicitAnsiStringFromAny.CreateAsSystem(Scope);
@@ -1237,8 +1218,7 @@ begin
   IsOrdinal := TSysTypeCast_IsOrdinal.CreateAsSystem(Scope);
 
   // in
-  Ordinal_In := TSysOrdinal_In.CreateAsSystem(Scope);
-  AnsiChar_In := TSysOrdinal_In.CreateAsSystem(Scope);
+  Ordinal_In_Set := TSysOrdinalInSet.CreateAsSystem(Scope);
   // add
   StaticArray_Add := TSys_StaticArray_Add.CreateAsSystem(Scope);
   Ptr_IntDiv_Int := TSys_Ptr_IntDiv_Int.CreateAsSystem(Scope);
