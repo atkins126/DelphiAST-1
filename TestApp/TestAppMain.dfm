@@ -3,7 +3,7 @@ object frmTestAppMain: TfrmTestAppMain
   Top = 0
   Caption = 'Delphi AST Test App'
   ClientHeight = 643
-  ClientWidth = 793
+  ClientWidth = 814
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -27,7 +27,7 @@ object frmTestAppMain: TfrmTestAppMain
     AlignWithMargins = True
     Left = 271
     Top = 172
-    Width = 519
+    Width = 540
     Height = 468
     ActivePage = tsSource
     Align = alClient
@@ -37,7 +37,7 @@ object frmTestAppMain: TfrmTestAppMain
       object edUnit: TSynEdit
         Left = 0
         Top = 0
-        Width = 511
+        Width = 532
         Height = 440
         Align = alClient
         Font.Charset = DEFAULT_CHARSET
@@ -66,11 +66,10 @@ object frmTestAppMain: TfrmTestAppMain
           ''
           'interface'
           ''
-          'type'
-          '  TSet = set of Byte;'
-          ''
-          'const '
-          '  Alpha: TSet = [0..1];'
+          'const'
+          '  Alpha = ['#39'A'#39'..'#39'Z'#39', '#39'a'#39'..'#39'z'#39', '#39'_'#39'];'
+          '  AlphaNumeric = Alpha + ['#39'0'#39'..'#39'9'#39'];'
+          '  AlphaNumericDot = AlphaNumeric + ['#39'.'#39'];'
           ''
           'implementation'
           ' '
@@ -81,7 +80,6 @@ object frmTestAppMain: TfrmTestAppMain
           ''
           '')
         FontSmoothing = fsmNone
-        ExplicitLeft = -1
       end
     end
     object tsAST: TTabSheet
@@ -90,7 +88,7 @@ object frmTestAppMain: TfrmTestAppMain
       object tvAST: TTreeView
         Left = 0
         Top = 0
-        Width = 511
+        Width = 532
         Height = 440
         Align = alClient
         Indent = 19
@@ -103,7 +101,7 @@ object frmTestAppMain: TfrmTestAppMain
       object edAllItems: TSynEdit
         Left = 0
         Top = 0
-        Width = 511
+        Width = 532
         Height = 440
         Align = alClient
         Font.Charset = DEFAULT_CHARSET
@@ -134,13 +132,13 @@ object frmTestAppMain: TfrmTestAppMain
   object Panel1: TPanel
     Left = 0
     Top = 0
-    Width = 793
+    Width = 814
     Height = 169
     Align = alTop
     BevelOuter = bvNone
     TabOrder = 1
     DesignSize = (
-      793
+      814
       169)
     object Label1: TLabel
       Left = 8
@@ -152,14 +150,14 @@ object frmTestAppMain: TfrmTestAppMain
     object edSrcRoot: TEdit
       Left = 8
       Top = 24
-      Width = 551
+      Width = 572
       Height = 21
       Anchors = [akLeft, akTop, akRight]
       TabOrder = 0
       Text = 'C:\Program Files (x86)\Embarcadero\Studio\20.0\source\'
     end
     object Button1: TButton
-      Left = 565
+      Left = 586
       Top = 20
       Width = 106
       Height = 25
@@ -169,7 +167,7 @@ object frmTestAppMain: TfrmTestAppMain
       OnClick = Button1Click
     end
     object Button2: TButton
-      Left = 677
+      Left = 698
       Top = 20
       Width = 108
       Height = 25
@@ -181,7 +179,7 @@ object frmTestAppMain: TfrmTestAppMain
     object Memo1: TMemo
       Left = 8
       Top = 51
-      Width = 777
+      Width = 798
       Height = 118
       Anchors = [akLeft, akTop, akRight]
       Lines.Strings = (
@@ -237,6 +235,32 @@ object frmTestAppMain: TfrmTestAppMain
       ItemHeight = 13
       TabOrder = 1
     end
+  end
+  object chkbShowSysDecls: TCheckBox
+    Left = 432
+    Top = 173
+    Width = 177
+    Height = 17
+    Caption = 'Show system declarations'
+    TabOrder = 3
+  end
+  object chkbShowConstValues: TCheckBox
+    Left = 576
+    Top = 173
+    Width = 113
+    Height = 17
+    Caption = 'Show const values'
+    Checked = True
+    State = cbChecked
+    TabOrder = 4
+  end
+  object chkbShowAnonymous: TCheckBox
+    Left = 695
+    Top = 173
+    Width = 111
+    Height = 17
+    Caption = 'Show Anonymous'
+    TabOrder = 5
   end
   object SynPasSyn1: TSynPasSyn
     Options.AutoDetectEnabled = False

@@ -33,6 +33,27 @@ uses
    AST.Parser.Utils,
    AST.Delphi.Parser;
 
+function AddSets(Left, Right: TIDSetConstant): TIDConstant;
+var
+  LList, RList: TIDExpressions;
+begin
+  LList := Left.Value;
+  RList := Right.Value;
+  // todo: remove duplicates
+  Result := TIDSetConstant.CreateAsAnonymous(Left.Scope, Left.DataType, LList + RList);
+  Result.TextPosition := Left.TextPosition;
+end;
+
+function CalcSets(const Left, Right: TIDConstant; Operation: TOperatorID): TIDConstant;
+begin
+  case Operation of
+    opAdd: Result := AddSets(Left as TIDSetConstant, Right as TIDSetConstant);
+    opSubtract: Result := Left; // todo:
+  else
+    Result := nil;
+  end;
+end;
+
 function TExpressionCalculator.ProcessConstOperation(const Left, Right: TIDConstant; Operation: TOperatorID): TIDConstant;
   //////////////////////////////////////////////////////////////
   function CalcInteger(LValue, RValue: Int64; Operation: TOperatorID): TIDConstant;
@@ -455,7 +476,11 @@ begin
   if LeftType = TIDBooleanConstant then
     Constant := CalcBoolean(TIDBooleanConstant(L).Value, TIDBooleanConstant(R).Value, Operation)
   else
-    AbortWorkInternal('Invalid parameters', L.SourcePosition);
+  if (LeftType = TIDSetConstant) and (RightType = TIDSetConstant) then
+  begin
+    Constant := CalcSets(L, R, Operation);
+  end else
+    AbortWorkInternal('Const Calc: invalid arguments', L.SourcePosition);
 
   if not Assigned(Constant) then
     AbortWork('Operation %s not supported for constants', [OperatorFullName(Operation)], L.SourcePosition);

@@ -504,7 +504,11 @@ type
   {range type}
   TIDRangeType = class(TIDOrdinal)
   private
-    FRangeType: TIDType;
+    fBaseType: TIDOrdinal;
+    fLoDecl: TIDConstant;
+    fHiDecl: TIDConstant;
+    procedure SetHiDecl(const Value: TIDConstant);
+    procedure SetLoDecl(const Value: TIDConstant);
   protected
     function GetDisplayName: string; override;
     procedure CreateStandardOperators; override;
@@ -512,7 +516,9 @@ type
     constructor CreateAsSystem(Scope: TScope; const Name: string); override;
     constructor CreateAsAnonymous(Scope: TScope); override;
     constructor Create(Scope: TScope; const Identifier: TIdentifier); override;
-    property ElementType: TIDType read FRangeType write FRangeType;
+    property BaseType: TIDOrdinal read fBaseType write fBaseType;
+    property LoDecl: TIDConstant read fLoDecl write SetLoDecl;
+    property HiDecl: TIDConstant read fHiDecl write SetHiDecl;
   end;
 
   {enum type}
@@ -708,7 +714,7 @@ type
     function GetDisplayName: string; override;
     function GetDataSize: Integer; override;
   public
-    constructor CreateAnonymous(Scope: TScope; BaseType: TIDOrdinal); reintroduce;
+    constructor CreateAsAnonymous(Scope: TScope; BaseType: TIDOrdinal); reintroduce;
     constructor Create(Scope: TScope; const ID: TIdentifier); override;
     procedure CreateStandardOperators; override;
     ////////////////////////////////////////////////////////////////////////////
@@ -985,6 +991,17 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
+  {set constant}
+  TIDSetConstant = class(TIDXXXConstant<TIDExpressions>)
+  public
+    function ValueDataType: TDataTypeID; override;
+    function ValueByteSize: Integer; override;
+    function AsString: string; override;
+    function AsInt64: Int64; override;
+    function AsVariant: Variant; override;
+    function CompareTo(Constant: TIDConstant): Integer; override;
+  end;
+
   TExpressonType = (
     etDeclaration,
     etExpressionList
@@ -1034,6 +1051,7 @@ type
     function GetText: string;
     function GetAsUnit: TIDUnit; inline;
     function GetDeclClass: TIDDeclarationClass;
+    function GetIsRangeConst: Boolean;
   protected
     function GetDataType: TIDType; virtual;
   public
@@ -1062,6 +1080,7 @@ type
     property IsLocalVar: Boolean read GetIsLocalVar;
     property IsAnyLocalVar: Boolean read GetIsAnyLocalVar;
     property IsVariable: Boolean read GetIsVariable;
+    property IsRangeConst: Boolean read GetIsRangeConst;
     property IsParam: Boolean read GetIsParam;
     property IsNonAnonimousVariable: Boolean read GetIsNonAnonimousVariable;
     //property IsNullableVariable: Boolean read GetIsNullableVariable;
@@ -1576,6 +1595,7 @@ type
   function DeclarationName(Decl: TIDDeclaration; IsList: Boolean = False): string;
   function ExpressionName(Expr: TIDExpression): string;
   function ExpressionsName(const Expressions: TIDExpressions): string;
+  function GetExpressionsNames(const Expressions: TIDExpressions; const Separator: string = ', '): string;
   function GetProcName(Proc: TIDProcedure; WithParamsDataTypes: Boolean = False): string;
   function IDCompare(const Key1, Key2: TIDDeclaration): NativeInt;
   function IDVarCompare(const Key1, Key2: TIDVariable): NativeInt;
@@ -2807,6 +2827,9 @@ begin
   if Assigned(FGenericDescriptor) then
     Result := Result + GenericDescriptorAsText(FGenericDescriptor);
 
+  if Result = '' then
+    Exit;
+
   Pt := GetParent;
   while Assigned(Pt) do
   begin
@@ -3439,7 +3462,8 @@ end;
 
 function TIDExpression.GetDataType: TIDType;
 begin
-  Result := FDeclaration.DataType
+  Result := FDeclaration.DataType;
+  Assert(Assigned(Result));
 end;
 
 function TIDExpression.GetDataTypeID: TDataTypeID;
@@ -3519,6 +3543,11 @@ end;
 function TIDExpression.GetIsProcedure: Boolean;
 begin
   Result := (FDeclaration.ItemType = itProcedure);
+end;
+
+function TIDExpression.GetIsRangeConst: Boolean;
+begin
+  Result := fDeclaration.ClassType = TIDRangeConstant;
 end;
 
 function TIDExpression.GetIsTMPRef: Boolean;
@@ -4187,7 +4216,7 @@ function TIDArray.GetDisplayName: string;
   begin
     Result := '';
     for i := 0 to FDimensionsCount - 1 do
-      Result := AddStringSegment(Result, IntToStr(FDimensions[i].GetElementsCount), ', ');
+      Result := AddStringSegment(Result, FDimensions[i].DisplayName, ', ');
   end;
 begin
   Result := inherited GetDisplayName;
@@ -4419,6 +4448,7 @@ begin
   OverloadBinarOperator2(opEqual, Self, SYSUnit._Boolean);
   OverloadBinarOperator2(opNotEqual, Self, SYSUnit._Boolean);
   fSysExplicitFromAny := SYSUnit.Operators.ExplicitRecordFromAny;
+  OverloadExplicitToAny(SYSUnit.Operators.ExplicitRecordToAny);
 end;
 
 function TIDRecord.GetDataSize: Integer;
@@ -4552,7 +4582,7 @@ begin
     CreateStandardOperators;
 end;
 
-constructor TIDSet.CreateAnonymous(Scope: TScope; BaseType: TIDOrdinal);
+constructor TIDSet.CreateAsAnonymous(Scope: TScope; BaseType: TIDOrdinal);
 begin
   inherited CreateAsAnonymous(Scope);
   fDataTypeID := dtSet;
@@ -4567,9 +4597,10 @@ begin
   OverloadImplicitTo(Self);
   OverloadBinarOperator2(opEqual, Self, SYSUnit._Boolean);
   OverloadBinarOperator2(opNotEqual, Self, SYSUnit._Boolean);
+  OverloadBinarOperator2(opAdd, Self, Self);
   OverloadImplicitToAny(SYSUnit.Operators.ImplicitArrayToAny);
   AddBinarySysOperator(opIn, SYSUnit.Operators.Ordinal_In_Set);
-//  OverloadExplicitFromAny(SYSUnit.Operators.ImplicitSetFromAny);
+  OverloadImplicitFromAny(SYSUnit.Operators.ImplicitSetFromAny);
 end;
 
 function TIDSet.GetBitsCount: UInt32;
@@ -4721,6 +4752,13 @@ begin
   Result := '[' + Result + ']';
 end;
 
+function GetExpressionsNames(const Expressions: TIDExpressions; const Separator: string = ', '): string;
+begin
+  Result := '';
+  for var i := 0 to Length(Expressions) - 1 do
+    Result := AddStringSegment(Result, Expressions[i].DisplayName, Separator);
+end;
+
 function ExpressionsName(const Expressions: TIDExpressions): string;
 var
   i, c: Integer;
@@ -4769,7 +4807,10 @@ end;
 
 procedure TSpace<T>.Add(const Declaration: T);
 begin
-  Assert(FLast <> Declaration);
+  if FLast = Declaration then
+    AbortWorkInternal('Duplicated declaration: ' + TIDDeclaration(Declaration).DisplayName,
+      TIDDeclaration(Declaration).TextPosition);
+
   if Assigned(FLast) then
   begin
     Assert(not Assigned(TIDDeclaration(FLast).FNext));
@@ -5154,11 +5195,22 @@ end;
 
 function TIDRangeType.GetDisplayName: string;
 begin
-  Result := Name;
-  if (Result = '') and Assigned(FRangeType) then
-    Result := FRangeType.DisplayName
-  else
-    Result := IntToStr(LowBound) + '..' + IntToStr(HighBound);
+
+  Result := DeclarationName(fLoDecl) + '..' + DeclarationName(fHiDecl);
+  if Name <> '' then
+    Result := Name + '(' + Result + ')';
+end;
+
+procedure TIDRangeType.SetHiDecl(const Value: TIDConstant);
+begin
+  fHiDecl := Value;
+  HighBound := Value.AsInt64;
+end;
+
+procedure TIDRangeType.SetLoDecl(const Value: TIDConstant);
+begin
+  fLoDecl := Value;
+  LowBound := Value.AsInt64;
 end;
 
 { TIDProcedureType }
@@ -5261,7 +5313,7 @@ end;
 
 function TIDRangeConstant.GetDisplayName: string;
 begin
-  Result := FValue.LBExpression.DisplayName + '..' + FValue.HBExpression.DataTypeName;
+  Result := FValue.LBExpression.DisplayName + '..' + FValue.HBExpression.DisplayName;
 end;
 
 { TProcScope }
@@ -5954,6 +6006,7 @@ procedure TIDStaticArray.CreateStandardOperators;
 begin
   inherited;
   AddBinarySysOperator(opAdd, SYSUnit.Operators.StaticArray_Add);
+  OverloadExplicitToAny(SYSUnit.Operators.ExplicitStaticArrayToAny);
 end;
 
 { TUnknownIDExpression }
@@ -6002,6 +6055,38 @@ procedure TIDNullPointerType.CreateStandardOperators;
 begin
   inherited;
   OverloadImplicitToAny(SYSUnit.Operators.ImplicitNullPtrToAny);
+end;
+
+{ TIDSetConstant }
+
+function TIDSetConstant.AsInt64: Int64;
+begin
+  Result := 0;
+end;
+
+function TIDSetConstant.AsString: string;
+begin
+  Result := '[' + GetExpressionsNames(Value) + ']';
+end;
+
+function TIDSetConstant.AsVariant: Variant;
+begin
+  Result := null;
+end;
+
+function TIDSetConstant.CompareTo(Constant: TIDConstant): Integer;
+begin
+  Result := 0;
+end;
+
+function TIDSetConstant.ValueByteSize: Integer;
+begin
+  Result := 0;
+end;
+
+function TIDSetConstant.ValueDataType: TDataTypeID;
+begin
+  Result := dtSet;
 end;
 
 initialization

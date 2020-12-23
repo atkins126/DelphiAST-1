@@ -38,6 +38,9 @@ type
     Splitter1: TSplitter;
     lbFiles: TCheckListBox;
     Button4: TButton;
+    chkbShowSysDecls: TCheckBox;
+    chkbShowConstValues: TCheckBox;
+    chkbShowAnonymous: TCheckBox;
     procedure Button2Click(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
@@ -49,6 +52,8 @@ type
     fFiles: TStringDynArray;
     fSettings: IASTProjectSettings;
     procedure OnProgress(const Module: IASTModule; Status: TASTProcessStatusClass);
+    procedure ShowAllItems(const Project: IASTDelphiProject);
+    procedure ShowResult(const Project: IASTDelphiProject);
   public
     { Public declarations }
     procedure IndexSources(const RootPath: string; Dict: TSourcesDict);
@@ -151,9 +156,7 @@ end;
 procedure TfrmTestAppMain.Button1Click(Sender: TObject);
 var
   UN: TASTDelphiUnit;
-  Msg: TStrings;
   Prj: IASTDelphiProject;
-  CResult: TCompilerResult;
 begin
   Memo1.Clear;
   Prj := TASTDelphiProject.Create('test');
@@ -165,36 +168,7 @@ begin
   UN := TASTDelphiUnit.Create(Prj, 'test', edUnit.Text);
   Prj.AddUnit(UN, nil);
 
-  Msg := TStringList.Create;
-  try
-    Msg.Add('===================================================================');
-    CResult := Prj.Compile;
-    if CResult = CompileSuccess then
-      Msg.Add('compile success')
-    else
-      Msg.Add('compile fail');
-
-    ASTToTreeView2(UN, tvAST);
-
-    edAllItems.BeginUpdate;
-    try
-      edAllItems.Clear;
-      Prj.EnumIntfDeclarations(
-        procedure(const Module: TASTModule; const Decl: TASTDeclaration)
-        begin
-          edAllItems.Lines.Add(format('%s - %s.%s', [GetItemTypeName(TIDDeclaration(Decl).ItemType), Module.Name, GetDeclName(Decl)]));
-          Application.ProcessMessages;
-        end);
-    finally
-      edAllItems.EndUpdate;
-    end;
-
-    CompilerMessagesToStrings(Prj.Messages, Msg);
-
-    Memo1.Lines := Msg;
-  finally
-    Msg.Free;
-  end;
+  ShowResult(Prj);
 end;
 
 const cRTLUsesSource =
@@ -212,12 +186,61 @@ begin
     Memo1.Lines.Add(Module.Name + ' : ' + Status.Name);
 end;
 
+procedure TfrmTestAppMain.ShowAllItems(const Project: IASTDelphiProject);
+begin
+  edAllItems.BeginUpdate;
+  try
+    edAllItems.Clear;
+    Project.EnumIntfDeclarations(
+      procedure(const Module: TASTModule; const Decl: TASTDeclaration)
+      begin
+        if not chkbShowAnonymous.Checked and (Decl.ID.Name = '') then
+          Exit;
+
+        if not chkbShowSysDecls.Checked and (Module.Name = 'system') then
+          Exit;
+
+        var Str := format('%s - %s.%s', [GetItemTypeName(TIDDeclaration(Decl).ItemType), Module.Name, GetDeclName(Decl)]);
+
+        if chkbShowConstValues.Checked and (Decl is TIDConstant) then
+          Str := Str + ' = ' + TIDConstant(Decl).AsString;
+
+        edAllItems.Lines.Add(Str);
+        Application.ProcessMessages;
+      end);
+  finally
+    edAllItems.EndUpdate;
+  end;
+end;
+
+procedure TfrmTestAppMain.ShowResult(const Project: IASTDelphiProject);
+begin
+  var Msg := TStringList.Create;
+  try
+    Msg.Add('===================================================================');
+    var CResult := Project.Compile;
+    if CResult = CompileSuccess then
+      Msg.Add('compile success')
+    else
+      Msg.Add('compile fail');
+
+    Msg.Add('total lines parsed: ' + IntToStr(Project.TotalLinesParsed));
+
+      //ASTToTreeView2(UN, tvAST);
+
+    ShowAllItems(Project);
+    CompilerMessagesToStrings(Project.Messages, Msg);
+
+    Memo1.Lines := Msg;
+  finally
+    Msg.Free;
+  end;
+end;
+
 procedure TfrmTestAppMain.Button2Click(Sender: TObject);
 var
   UN: TASTDelphiUnit;
-  Msg: TStrings;
   Prj: IASTDelphiProject;
-  CResult: TCompilerResult;
 begin
   Memo1.Clear;
 
@@ -233,37 +256,7 @@ begin
   UN := TASTDelphiUnit.Create(Prj, 'RTLParseTest', cRTLUsesSource);
   Prj.AddUnit(UN, nil);
 
-  Msg := TStringList.Create;
-  try
-    Msg.Add('===================================================================');
-    CResult := Prj.Compile;
-    if CResult = CompileSuccess then
-      Msg.Add('compile success')
-    else
-      Msg.Add('compile fail');
-
-    ASTToTreeView2(UN, tvAST);
-
-    edAllItems.BeginUpdate;
-    try
-      edAllItems.Clear;
-      Prj.EnumIntfDeclarations(
-        procedure(const Module: TASTModule; const Decl: TASTDeclaration)
-        begin
-          edAllItems.Lines.Add(format('%s - %s.%s', [GetItemTypeName(TIDDeclaration(Decl).ItemType), Module.Name, GetDeclName(Decl)]));
-          Application.ProcessMessages;
-        end);
-    finally
-      edAllItems.EndUpdate;
-    end;
-
-    CompilerMessagesToStrings(Prj.Messages, Msg);
-
-    for var str in Msg do
-      Memo1.Lines.Add(str);
-  finally
-    Msg.Free;
-  end;
+  ShowResult(Prj);
 end;
 
 procedure TfrmTestAppMain.Button3Click(Sender: TObject);
