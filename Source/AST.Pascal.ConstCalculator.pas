@@ -174,7 +174,7 @@ function TExpressionCalculator.ProcessConstOperation(const Left, Right: TIDConst
     case Operation of
       opAdd: begin
         sValue := LValue + RValue;
-        Result := TIDStringConstant.CreateAsAnonymous(Left.Scope, Sys._String, sValue);
+        Result := TIDStringConstant.CreateAsAnonymous(Left.Scope, Sys._UnicodeString, sValue);
       end;
       opEqual,
       opNotEqual: begin
@@ -375,7 +375,7 @@ function TExpressionCalculator.ProcessConstOperation(Left, Right: TIDExpression;
     case Operation of
       opAdd: begin
         sValue := LValue + RValue;
-        Result := TIDStringConstant.CreateWithoutScope(Sys._String, sValue);
+        Result := TIDStringConstant.CreateWithoutScope(Sys._UnicodeString, sValue);
       end;
       opEqual,
       opNotEqual: begin
@@ -398,7 +398,7 @@ function TExpressionCalculator.ProcessConstOperation(Left, Right: TIDExpression;
     case Operation of
       opAdd: begin
         sValue := LValue + RValue;
-        Result := TIDStringConstant.CreateWithoutScope(Sys._String, sValue);
+        Result := TIDStringConstant.CreateWithoutScope(Sys._UnicodeString, sValue);
       end;
       opEqual,
       opNotEqual,
@@ -432,6 +432,18 @@ function TExpressionCalculator.ProcessConstOperation(Left, Right: TIDExpression;
     bValue := (Left.CompareTo(LB) >= 0) and (Left.CompareTo(HB) <= 0);
     Result := TIDBooleanConstant.CreateWithoutScope(Sys._Boolean, bValue);
   end;
+
+  function CalcDynArrays(const Left, Right: TIDConstant; Operation: TOperatorID): TIDConstant;
+  begin
+    // todo:
+    case Operation of
+      opEqual: Result := TIDBooleanConstant.CreateAsAnonymous(Left.Scope, Sys._Boolean, False);
+      opMultiply: Result := Left; // todo:
+    else
+      Result := nil;
+    end;
+  end;
+
 var
   L, R: TIDConstant;
   LeftType, RightType: TClass;
@@ -479,6 +491,10 @@ begin
   if (LeftType = TIDSetConstant) and (RightType = TIDSetConstant) then
   begin
     Constant := CalcSets(L, R, Operation);
+  end else
+  if (LeftType = TIDDynArrayConstant) and (RightType = TIDDynArrayConstant) then
+  begin
+    Constant := CalcDynArrays(L, R, Operation);
   end else
     AbortWorkInternal('Const Calc: invalid arguments', L.SourcePosition);
 

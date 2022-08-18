@@ -72,7 +72,7 @@ resourcestring
   sNoOverloadOperatorForTypeFmt = 'No overload operator "%s" for type "%s"';
   sUnknownOperatorFmt = 'Unknown operator "%s"';
   sOperatorNeedNCountOfParameters = 'Operator "%s" need %d explicit parameters';
-  sIncompatibleTypesFmt = 'Incompatible types: "%s" and "%s"';
+  sIncompatibleTypesFmt = 'Incompatible types: Src: "%s" and Dst: "%s"';
   sInvalidTypecastFmt = 'Can not explicitly convert type "%s" into "%s"';
   sEmptyExpression = 'Empty expression';
   sExpressionMustBeBoolean = 'Type of expression must be BOOLEAN';
@@ -267,11 +267,16 @@ type
     class procedure UNKNOWN_OPTION(const ID: TIdentifier);
     class procedure CANNOT_ASSIGN_TEMPORARRY_OBJECT(Expr: TIDExpression);
 
+    class procedure CLASS_CONSTRUCTOR_ALREADY_EXIST(const Proc: TIDProcedure);
+    class procedure CLASS_DESTRUCTOR_ALREADY_EXIST(const Proc: TIDProcedure);
+
+
     class procedure INTF_ALREADY_IMPLEMENTED(Expr: TIDExpression);
     class procedure INTF_METHOD_NOT_IMPLEMENTED(ClassType: TIDClass; Proc: TIDProcedure);
     class procedure RECORD_STATIC_CONSTRUCTOR_ALREADY_EXIST(const Proc: TIDProcedure);
     class procedure RECORD_STATIC_DESTRUCTOR_ALREADY_EXIST(const Proc: TIDProcedure);
     class procedure CTOR_DTOR_MUST_BE_DECLARED_IN_STRUCT(const Position: TTextPosition);
+    class procedure PARAMETERLESS_CTOR_NOT_ALLOWED_ON_RECORD(const Position: TTextPosition); static;
     class procedure OPERATOR_MUST_BE_DECLARED_IN_STRUCT(const Position: TTextPosition);
     class procedure CANNOT_ASSIGN_NULL_TO_NOTNULL(const Src: TIDExpression);
     class procedure ORDINAL_OR_SET_REQUIRED(const Src: TIDExpression);
@@ -387,7 +392,6 @@ begin
   AbortWork(sConstValueOverflowFmt, [Expr.DisplayName, DstDataType.DisplayName], Expr.TextPosition);
 end;
 
-
 class procedure TASTDelphiErrors.CTOR_DTOR_MUST_BE_DECLARED_IN_STRUCT(const Position: TTextPosition);
 begin
   AbortWork('CONSTRUCTOR or DESTRUCTOR must be declared only in a CLASS or RECORD type', Position);
@@ -396,6 +400,11 @@ end;
 class procedure TASTDelphiErrors.OPERATOR_MUST_BE_DECLARED_IN_STRUCT(const Position: TTextPosition);
 begin
   AbortWork('OPERATOR must be declared only in a CLASS or RECORD type', Position);
+end;
+
+class procedure TASTDelphiErrors.PARAMETERLESS_CTOR_NOT_ALLOWED_ON_RECORD(const Position: TTextPosition);
+begin
+  AbortWork('Parameterless constructors not allowed on record types', Position);
 end;
 
 class procedure TASTDelphiErrors.VAR_EXPRESSION_REQUIRED(Expr: TIDExpression);
@@ -834,6 +843,16 @@ end;
 class procedure TASTDelphiErrors.CANNOT_MODIFY_READONLY_PROPERTY(const Expr: TIDExpression);
 begin
   AbortWork(sCannotModifyReadOnlyProperty, Expr.TextPosition);
+end;
+
+class procedure TASTDelphiErrors.CLASS_CONSTRUCTOR_ALREADY_EXIST(const Proc: TIDProcedure);
+begin
+  AbortWork('CLASS CONSTRUCTOR already exists', Proc.TextPosition);
+end;
+
+class procedure TASTDelphiErrors.CLASS_DESTRUCTOR_ALREADY_EXIST(const Proc: TIDProcedure);
+begin
+  AbortWork('CLASS DESTRUCTOR already exists', Proc.TextPosition);
 end;
 
 class procedure TASTDelphiErrors.CLASS_NOT_IMPLEMENT_INTF(const Src: TIDExpression; Dest: TIDType);

@@ -113,8 +113,8 @@ type
     function Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration; override;
   end;
 
-  {implicit AnsiChar -> Char}
-  TSysImplicitAnsiCharToChar = class(TSysOpImplicit)
+  {implicit AnsiChar -> WideChar}
+  TSysImplicitAnsiCharToWideChar = class(TSysOpImplicit)
   public
     function Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration; override;
   end;
@@ -187,6 +187,25 @@ type
     function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
   end;
 
+  {implicit TVarRec -> Any}
+  TSysImplicitTVarRecToAny = class(TSysOpImplicit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
+  end;
+
+  {implicit TVarRec <- Any}
+  TSysImplicitTVarRecFromAny = class(TSysOpImplicit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
+  end;
+
+  {implicit TVarRec <- Any}
+  TSysImplicitSysVarFromAny = class(TSysOpImplicit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration; override;
+  end;
+
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   /// EXPLICIT
   ///////////////////////////////////////////////////////////////////////////////////////////
@@ -243,6 +262,12 @@ type
 
   {explicit Pointer <- Any}
   TSysExplictPointerFromAny = class(TSysOpExplisit)
+  public
+    function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
+  end;
+
+  {explicit Untyped Ref -> Any}
+  TSysExplicitUntypedRefToAny = class(TSysOpExplisit)
   public
     function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
   end;
@@ -307,6 +332,18 @@ type
     function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
   end;
 
+  {operator Set * Set}
+
+  TSys_Multiply_Set = class(TSysOpBinary)
+  public
+    function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
+  end;
+
+  {operator [...] = [...]}
+  TSys_Equal_DynArray = class(TSysOpBinary)
+  public
+    function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
+  end;
 
 implementation
 
@@ -379,7 +416,7 @@ end;
 function TSysImplicitCharToString.Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration;
 begin
   if Src.IsConstant then
-    Exit(SYSUnit._String)
+    Exit(SYSUnit._UnicodeString)
   else
     Result := Self;
 end;
@@ -418,11 +455,11 @@ begin
   Result := nil;
 end;
 
-{ TSysImplicitAnsiCharToChar }
+{ TSysImplicitAnsiCharToWideChar }
 
-function TSysImplicitAnsiCharToChar.Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration;
+function TSysImplicitAnsiCharToWideChar.Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration;
 begin
-  Result := nil;
+  Result := Dst;
 end;
 
 { TSysImplicitMetaClassToGUID }
@@ -501,20 +538,32 @@ end;
 
 function TSysExplicitTProcFromAny.Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration;
 begin
+  var ASrcParams: TVariableList;
+  var ASrcResultType: TIDType;
+  var DstProcType := Dst as TIDProcType;
+
   if Src.ItemType = itProcedure then
   begin
-    var SrcProc := Src.AsProcedure;
-    var DstProcType := Dst as TIDProcType;
-    if TASTDelphiUnit.StrictMatchProcSingnatures(SrcProc.ExplicitParams, DstProcType.Params, SrcProc.ResultType, DstProcType.ResultType) then
+    ASrcParams := Src.AsProcedure.ExplicitParams;
+    ASrcResultType := Src.AsProcedure.ResultType;
+  end else
+  if Src.DataTypeID = dtProcType then
+  begin
+    var ASrcProcType := Src.DataType as TIDProcType;
+    ASrcParams := ASrcProcType.Params;
+    ASrcResultType := ASrcProcType.ResultType;
+  end else
+  begin
+    if (Src.DataTypeID = dtPointer) and DstProcType.IsStatic then
       Exit(Dst)
     else
       Exit(nil);
   end;
 
-  if (Src.DataTypeID = dtPointer) and (Dst as TIDProcType).IsStatic then
-    Result := Dst
+  if TASTDelphiUnit.StrictMatchProcSingnatures(ASrcParams, DstProcType.Params, ASrcResultType, DstProcType.ResultType) then
+    Exit(Dst)
   else
-    Result := nil;
+    Exit(nil);
 end;
 
 { TSysExplicitEnumToAny }
@@ -581,7 +630,7 @@ begin
   end else begin
     Result :=
       ((Dst = SYSUnit._PAnsiChar) and (SrcElType = SYSUnit._AnsiChar)) or
-      ((Dst = SYSUnit._PChar) and (SrcElType = SYSUnit._Char));
+      ((Dst = SYSUnit._PWideChar) and (SrcElType = SYSUnit._WideChar));
   end;
 end;
 
@@ -617,7 +666,11 @@ begin
   Result := (Src.DataTypeID = dtAnsiString) or
             (Src.DataTypeID in [dtPointer, dtPAnsiChar, dtPWideChar]) or
             (
-              (Src.DataTypeID = dtStaticArray) and (TIDArray(Src).ElementDataType.DataTypeID = dtChar)
+              (Src.DataTypeID = dtStaticArray) and
+                (
+                  (TIDArray(Src).ElementDataType.DataTypeID = dtChar) or
+                  (TIDArray(Src).ElementDataType.DataTypeID = dtAnsiChar)
+                )
             );
 end;
 
@@ -667,11 +720,18 @@ begin
     Result := nil;
 end;
 
-{ TSysExplicitUntypedToAny }
+{ TSysExplicitUntypedRefToAny }
 
-function TSysExplicitUntypedToAny.Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean;
+function TSysExplicitUntypedRefToAny.Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean;
 begin
   Result := (Dst.DataTypeID in [dtPointer, dtClass, dtInterface]);
+end;
+
+{ TSysExplicitUntypedToAny }
+
+function TSysExplicitUntypedToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
+begin
+  Result := Dst.DataSize = Src.DataSize;
 end;
 
 
@@ -689,9 +749,9 @@ begin
   if (Left.DataTypeID = dtStaticArray) and (Right.DataType.IsInteger) then
   begin
     var ADT := TIDArray(Left.DataType);
-    if ADT.ElementDataType = SYSUnit._Char then
+    if ADT.ElementDataType = SYSUnit._WideChar then
     begin
-      Result := TIDExpression.Create(GetTMPVar(SYSUnit._Char.DefaultReference));
+      Result := TIDExpression.Create(GetTMPVar(SYSUnit._WideChar.DefaultReference));
       Exit;
     end;
     if ADT.ElementDataType = SYSUnit._AnsiChar then
@@ -756,7 +816,7 @@ function TSysImplicitSetFromAny.Check(const SContext: TSContext; const Src: TIDE
 begin
   Result := nil;
   if Src.IsDynArrayConst then
-    Result := TASTDelphiUnit.MatchConstDynArrayImplicit(SContext, Src, Dst);
+    Result := TASTDelphiUnit.CheckConstDynArrayImplicit(SContext, Src, Dst);
 end;
 
 function TSysImplicitSetFromAny.Match(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDExpression;
@@ -764,7 +824,7 @@ begin
   Result := nil;
   if Src.IsDynArrayConst then
   begin
-    var Implicit := TASTDelphiUnit.MatchConstDynArrayImplicit(SContext, Src, Dst);
+    var Implicit := TASTDelphiUnit.CheckConstDynArrayImplicit(SContext, Src, Dst);
     if Assigned(Implicit) and (Src.DataTypeID <> dtSet) then
     begin
       var Decl := TIDSetConstant.CreateAsAnonymous(SContext.Scope, Dst, Src.AsDynArrayConst.Value);
@@ -786,7 +846,7 @@ function TSysImplicitPointerFromAny.Check(const SContext: TSContext; const Src, 
 begin
   Result := (
     ((Dst.DataTypeID in [dtPAnsiChar]) and (Src.DataTypeID = dtStaticArray) and (TIDStaticArray(Src).ElementDataType = SYSUnit._AnsiChar)) or
-    ((Dst.DataTypeID in [dtPWideChar]) and (Src.DataTypeID = dtStaticArray) and (TIDStaticArray(Src).ElementDataType = SYSUnit._Char))
+    ((Dst.DataTypeID in [dtPWideChar]) and (Src.DataTypeID = dtStaticArray) and (TIDStaticArray(Src).ElementDataType = SYSUnit._WideChar))
   );
 end;
 
@@ -802,6 +862,64 @@ end;
 function TSysExplicitStaticArrayToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
 begin
   Result := Src.DataSize = Dst.DataSize;
+end;
+
+{ TSys_Multiply_Set }
+
+function TSys_Multiply_Set.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
+begin
+  // todo:
+  Result := Left;
+end;
+
+{ TSys_Equal_DynArray }
+
+function TSys_Equal_DynArray.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
+begin
+  // todo:
+  Result := SYSUnit._TrueExpression;
+end;
+
+{ TSysImplicitTVarRecToAny }
+
+function TSysImplicitTVarRecToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
+begin
+  case Dst.DataTypeID of
+    dtInt8, dtInt16, dtInt32, dtInt64, dtUInt8, dtUInt16, dtUInt32, dtUInt64,
+    dtNativeInt, dtNativeUInt, dtFloat32, dtFloat64, dtFloat80, dtCurrency, dtBoolean,
+    dtAnsiChar, dtChar, dtAnsiString, dtString, dtShortString, dtPAnsiChar, dtPWideChar,
+    dtClass, dtClassOf, dtInterface: Result := True;
+  else
+    Result := False;
+  end;
+end;
+
+{ TSysImplicitTVarRecFromAny }
+
+function TSysImplicitTVarRecFromAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
+begin
+  case Src.DataTypeID of
+    dtInt8, dtInt16, dtInt32, dtInt64, dtUInt8, dtUInt16, dtUInt32, dtUInt64,
+    dtNativeInt, dtNativeUInt, dtFloat32, dtFloat64, dtFloat80, dtCurrency, dtBoolean,
+    dtAnsiChar, dtChar, dtAnsiString, dtString, dtShortString, dtPAnsiChar, dtPWideChar,
+    dtClass, dtClassOf, dtInterface: Result := True;
+  else
+    Result := False;
+  end;
+end;
+
+
+{ TSysImplicitSysVarFromAny }
+
+function TSysImplicitSysVarFromAny.Check(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDDeclaration;
+begin
+  var ASysVar := Dst as TIDSysVariativeType;
+  for var AType in ASysVar.Types do
+  begin
+    Result := TASTDelphiUnit(SContext.Module).CheckImplicit(SContext, Src, Dst);
+    if Assigned(Result) then
+      Exit;
+  end;
 end;
 
 end.

@@ -74,6 +74,8 @@ type
     function GetPointerSize: Integer; override;
     function GetNativeIntSize: Integer; override;
     procedure InitSystemUnit; virtual;
+    procedure DoBeforeCompileUnit(AUnit: TASTModule); virtual;
+    procedure DoFinishCompileUnit(AUnit: TASTModule); virtual;
   public
     constructor Create(const Name: string); override;
     destructor Destroy; override;
@@ -101,6 +103,7 @@ type
     function Compile: TCompilerResult; virtual;
     function CompileInterfacesOnly: TCompilerResult; virtual;
     procedure EnumIntfDeclarations(const EnumProc: TEnumASTDeclProc);
+    procedure EnumAllDeclarations(const EnumProc: TEnumASTDeclProc);
     procedure PutMessage(const Message: TCompilerMessage); overload;
     procedure PutMessage(MessageType: TCompilerMessageType; const MessageText: string); overload;
     procedure PutMessage(MessageType: TCompilerMessageType; const MessageText: string; const SourcePosition: TTextPosition); overload;
@@ -369,8 +372,7 @@ var
   i: Integer;
 begin
   for i := 0 to FUnits.Count - 1 do
-    if FUnits[i] <> SYSUnit then
-      FUnits[i].Free;
+    FUnits[i].Free;
   FUnits.Clear;
   FStrLiterals.Free;
   FStrLiterals := TStrLiterals.Create(StrListCompare);
@@ -421,6 +423,28 @@ begin
   FUnitSearchPathes.Free;
   FOptions.Free;
   inherited;
+end;
+
+procedure TPascalProject.DoBeforeCompileUnit(AUnit: TASTModule);
+begin
+  // do nothing
+end;
+
+procedure TPascalProject.DoFinishCompileUnit(AUnit: TASTModule);
+begin
+  // do nothing
+end;
+
+procedure TPascalProject.EnumAllDeclarations(const EnumProc: TEnumASTDeclProc);
+var
+  i: Integer;
+  Module: TASTModule;
+begin
+  for i := 0 to FUnits.Count - 1 do
+  begin
+    Module := FUnits[i];
+    Module.EnumAllDeclarations(EnumProc);
+  end;
 end;
 
 procedure TPascalProject.EnumIntfDeclarations(const EnumProc: TEnumASTDeclProc);

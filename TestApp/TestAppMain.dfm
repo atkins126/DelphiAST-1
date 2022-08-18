@@ -10,136 +10,34 @@ object frmTestAppMain: TfrmTestAppMain
   Font.Height = -11
   Font.Name = 'Tahoma'
   Font.Style = []
-  OldCreateOrder = False
   Position = poScreenCenter
   OnCreate = FormCreate
-  PixelsPerInch = 96
   TextHeight = 13
   object Splitter1: TSplitter
     Left = 265
-    Top = 169
-    Height = 474
-    ExplicitLeft = 208
-    ExplicitTop = 208
-    ExplicitHeight = 100
+    Top = 203
+    Height = 440
   end
-  object PageControl1: TPageControl
-    AlignWithMargins = True
-    Left = 271
-    Top = 172
-    Width = 540
-    Height = 468
-    ActivePage = tsSource
-    Align = alClient
-    TabOrder = 0
-    object tsSource: TTabSheet
-      Caption = 'Source'
-      object edUnit: TSynEdit
-        Left = 0
-        Top = 0
-        Width = 532
-        Height = 440
-        Align = alClient
-        Font.Charset = DEFAULT_CHARSET
-        Font.Color = clWindowText
-        Font.Height = -13
-        Font.Name = 'Courier New'
-        Font.Style = []
-        TabOrder = 0
-        CodeFolding.GutterShapeSize = 11
-        CodeFolding.CollapsedLineColor = clGrayText
-        CodeFolding.FolderBarLinesColor = clGrayText
-        CodeFolding.IndentGuidesColor = clGray
-        CodeFolding.IndentGuides = True
-        CodeFolding.ShowCollapsedLine = False
-        CodeFolding.ShowHintMark = True
-        UseCodeFolding = False
-        Gutter.Font.Charset = DEFAULT_CHARSET
-        Gutter.Font.Color = clWindowText
-        Gutter.Font.Height = -11
-        Gutter.Font.Name = 'Courier New'
-        Gutter.Font.Style = []
-        Gutter.ShowLineNumbers = True
-        Highlighter = SynPasSyn1
-        Lines.Strings = (
-          'unit TestUnit1;'
-          ''
-          'interface'
-          ''
-          'const'
-          '  Alpha = ['#39'A'#39'..'#39'Z'#39', '#39'a'#39'..'#39'z'#39', '#39'_'#39'];'
-          '  AlphaNumeric = Alpha + ['#39'0'#39'..'#39'9'#39'];'
-          '  AlphaNumericDot = AlphaNumeric + ['#39'.'#39'];'
-          ''
-          'implementation'
-          ' '
-          'initialization'
-          ''
-          'end.'
-          ''
-          ''
-          '')
-        FontSmoothing = fsmNone
-      end
-    end
-    object tsAST: TTabSheet
-      Caption = 'AST'
-      ImageIndex = 1
-      object tvAST: TTreeView
-        Left = 0
-        Top = 0
-        Width = 532
-        Height = 440
-        Align = alClient
-        Indent = 19
-        TabOrder = 0
-      end
-    end
-    object tsNameSpace: TTabSheet
-      Caption = 'NameSpace'
-      ImageIndex = 2
-      object edAllItems: TSynEdit
-        Left = 0
-        Top = 0
-        Width = 532
-        Height = 440
-        Align = alClient
-        Font.Charset = DEFAULT_CHARSET
-        Font.Color = clWindowText
-        Font.Height = -13
-        Font.Name = 'Courier New'
-        Font.Style = []
-        TabOrder = 0
-        CodeFolding.GutterShapeSize = 11
-        CodeFolding.CollapsedLineColor = clGrayText
-        CodeFolding.FolderBarLinesColor = clGrayText
-        CodeFolding.IndentGuidesColor = clGray
-        CodeFolding.IndentGuides = True
-        CodeFolding.ShowCollapsedLine = False
-        CodeFolding.ShowHintMark = True
-        UseCodeFolding = False
-        Gutter.Font.Charset = DEFAULT_CHARSET
-        Gutter.Font.Color = clWindowText
-        Gutter.Font.Height = -11
-        Gutter.Font.Name = 'Courier New'
-        Gutter.Font.Style = []
-        Gutter.ShowLineNumbers = True
-        Highlighter = SynPasSyn1
-        FontSmoothing = fsmNone
-      end
-    end
+  object Splitter2: TSplitter
+    Left = 0
+    Top = 200
+    Width = 814
+    Height = 3
+    Cursor = crVSplit
+    Align = alTop
+    ResizeStyle = rsUpdate
   end
   object Panel1: TPanel
     Left = 0
     Top = 0
     Width = 814
-    Height = 169
+    Height = 200
     Align = alTop
     BevelOuter = bvNone
-    TabOrder = 1
+    TabOrder = 0
     DesignSize = (
       814
-      169)
+      200)
     object Label1: TLabel
       Left = 8
       Top = 8
@@ -154,7 +52,7 @@ object frmTestAppMain: TfrmTestAppMain
       Height = 21
       Anchors = [akLeft, akTop, akRight]
       TabOrder = 0
-      Text = 'C:\Program Files (x86)\Embarcadero\Studio\20.0\source\'
+      Text = 'C:\Program Files (x86)\Embarcadero\Studio\22.0\source\'
     end
     object Button1: TButton
       Left = 586
@@ -180,8 +78,8 @@ object frmTestAppMain: TfrmTestAppMain
       Left = 8
       Top = 51
       Width = 798
-      Height = 118
-      Anchors = [akLeft, akTop, akRight]
+      Height = 149
+      Anchors = [akLeft, akTop, akRight, akBottom]
       Lines.Strings = (
         'Memo1')
       ScrollBars = ssVertical
@@ -190,13 +88,13 @@ object frmTestAppMain: TfrmTestAppMain
   end
   object Panel2: TPanel
     Left = 0
-    Top = 169
+    Top = 203
     Width = 265
-    Height = 474
+    Height = 440
     Align = alLeft
     BevelOuter = bvNone
     Caption = 'Panel2'
-    TabOrder = 2
+    TabOrder = 1
     object Panel3: TPanel
       Left = 0
       Top = 0
@@ -230,37 +128,193 @@ object frmTestAppMain: TfrmTestAppMain
       Left = 0
       Top = 33
       Width = 265
-      Height = 441
+      Height = 407
       Align = alClient
       ItemHeight = 13
       TabOrder = 1
     end
   end
-  object chkbShowSysDecls: TCheckBox
-    Left = 432
-    Top = 173
-    Width = 177
-    Height = 17
-    Caption = 'Show system declarations'
-    TabOrder = 3
-  end
-  object chkbShowConstValues: TCheckBox
-    Left = 576
-    Top = 173
-    Width = 113
-    Height = 17
-    Caption = 'Show const values'
-    Checked = True
-    State = cbChecked
-    TabOrder = 4
-  end
-  object chkbShowAnonymous: TCheckBox
-    Left = 695
-    Top = 173
-    Width = 111
-    Height = 17
-    Caption = 'Show Anonymous'
-    TabOrder = 5
+  object Panel4: TPanel
+    Left = 268
+    Top = 203
+    Width = 546
+    Height = 440
+    Align = alClient
+    Caption = 'Panel4'
+    TabOrder = 2
+    object PageControl1: TPageControl
+      AlignWithMargins = True
+      Left = 4
+      Top = 4
+      Width = 538
+      Height = 432
+      ActivePage = tsSource
+      Align = alClient
+      TabOrder = 0
+      object tsSource: TTabSheet
+        Caption = 'Source'
+        object edUnit: TSynEdit
+          Left = 0
+          Top = 0
+          Width = 530
+          Height = 404
+          Align = alClient
+          Font.Charset = DEFAULT_CHARSET
+          Font.Color = clWindowText
+          Font.Height = -13
+          Font.Name = 'Courier New'
+          Font.Style = []
+          TabOrder = 0
+          CodeFolding.GutterShapeSize = 11
+          CodeFolding.CollapsedLineColor = clGrayText
+          CodeFolding.FolderBarLinesColor = clGrayText
+          CodeFolding.IndentGuidesColor = clGray
+          CodeFolding.IndentGuides = True
+          CodeFolding.ShowCollapsedLine = False
+          CodeFolding.ShowHintMark = True
+          UseCodeFolding = False
+          BookMarkOptions.LeftMargin = 0
+          BookMarkOptions.XOffset = 0
+          Gutter.Font.Charset = DEFAULT_CHARSET
+          Gutter.Font.Color = clWindowText
+          Gutter.Font.Height = -11
+          Gutter.Font.Name = 'Courier New'
+          Gutter.Font.Style = []
+          Gutter.ShowLineNumbers = True
+          Highlighter = SynPasSyn1
+          Lines.Strings = (
+            'unit TestUnit1;'
+            ''
+            'interface'
+            ''
+            'implementation'
+            '   '
+            'var'
+            '  F1: function (A: Integer): Integer;  '
+            ''
+            'function Get: Integer;'
+            'begin '
+            'end;'
+            ''
+            'initialization'
+            '  F1 := Get; '
+            ''
+            'end.')
+          FontSmoothing = fsmNone
+        end
+      end
+      object tsAST: TTabSheet
+        Caption = 'AST'
+        ImageIndex = 1
+        object tvAST: TTreeView
+          Left = 0
+          Top = 0
+          Width = 530
+          Height = 404
+          Align = alClient
+          Indent = 19
+          TabOrder = 0
+        end
+      end
+      object tsNameSpace: TTabSheet
+        Caption = 'NameSpace'
+        ImageIndex = 2
+        object edAllItems: TSynEdit
+          Left = 0
+          Top = 31
+          Width = 530
+          Height = 373
+          Align = alClient
+          Font.Charset = DEFAULT_CHARSET
+          Font.Color = clWindowText
+          Font.Height = -13
+          Font.Name = 'Courier New'
+          Font.Style = []
+          TabOrder = 0
+          CodeFolding.GutterShapeSize = 11
+          CodeFolding.CollapsedLineColor = clGrayText
+          CodeFolding.FolderBarLinesColor = clGrayText
+          CodeFolding.IndentGuidesColor = clGray
+          CodeFolding.IndentGuides = True
+          CodeFolding.ShowCollapsedLine = False
+          CodeFolding.ShowHintMark = True
+          UseCodeFolding = False
+          BookMarkOptions.LeftMargin = 0
+          BookMarkOptions.XOffset = 0
+          Gutter.Font.Charset = DEFAULT_CHARSET
+          Gutter.Font.Color = clWindowText
+          Gutter.Font.Height = -11
+          Gutter.Font.Name = 'Courier New'
+          Gutter.Font.Style = []
+          Gutter.ShowLineNumbers = True
+          Highlighter = SynPasSyn1
+          Options = [eoAutoIndent, eoDragDropEditing, eoEnhanceEndKey, eoGroupUndo, eoRightMouseMovesCursor, eoScrollPastEol, eoShowScrollHint, eoSmartTabDelete, eoSmartTabs, eoTabsToSpaces]
+          SearchEngine = SynEditSearch1
+          FontSmoothing = fsmNone
+          ExplicitLeft = -2
+          ExplicitTop = 34
+        end
+        object Panel5: TPanel
+          Left = 0
+          Top = 0
+          Width = 530
+          Height = 31
+          Align = alTop
+          BevelOuter = bvNone
+          TabOrder = 1
+          object Button5: TButton
+            AlignWithMargins = True
+            Left = 452
+            Top = 3
+            Width = 75
+            Height = 25
+            Align = alRight
+            Caption = 'Search'
+            TabOrder = 0
+            OnClick = Button5Click
+            ExplicitTop = 2
+          end
+          object NSSearchEdit: TEdit
+            AlignWithMargins = True
+            Left = 3
+            Top = 4
+            Width = 443
+            Height = 23
+            Margins.Top = 4
+            Margins.Bottom = 4
+            Align = alClient
+            TabOrder = 1
+            ExplicitHeight = 21
+          end
+        end
+      end
+    end
+    object chkbShowAnonymous: TCheckBox
+      Left = 427
+      Top = 6
+      Width = 111
+      Height = 18
+      Caption = 'Show Anonymous'
+      TabOrder = 1
+    end
+    object chkbShowConstValues: TCheckBox
+      Left = 314
+      Top = 6
+      Width = 107
+      Height = 18
+      Caption = 'Show const values'
+      Checked = True
+      State = cbChecked
+      TabOrder = 2
+    end
+    object chkbShowSysDecls: TCheckBox
+      Left = 162
+      Top = 6
+      Width = 145
+      Height = 18
+      Caption = 'Show system declarations'
+      TabOrder = 3
+    end
   end
   object SynPasSyn1: TSynPasSyn
     Options.AutoDetectEnabled = False
@@ -268,5 +322,9 @@ object frmTestAppMain: TfrmTestAppMain
     Options.Visible = False
     Left = 392
     Top = 400
+  end
+  object SynEditSearch1: TSynEditSearch
+    Left = 355
+    Top = 325
   end
 end

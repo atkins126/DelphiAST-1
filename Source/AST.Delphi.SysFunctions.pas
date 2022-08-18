@@ -75,6 +75,28 @@ type
     class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
   end;
 
+  {Default}
+  TSCTF_Default = class(TIDSysCompileFunction)
+  public
+    function Process(const Ctx: TSysFunctionContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {_console}
+  TSCTF_Console = class(TIDSysCompileFunction)
+  public
+    function Process(const Ctx: TSysFunctionContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {_typename}
+  TSCTF_TypeName = class(TIDSysCompileFunction)
+  public
+    function Process(const Ctx: TSysFunctionContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+
   {Delete}
   TSF_Delete = class(TIDSysRuntimeFunction)
   public
@@ -271,6 +293,14 @@ type
     class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
   end;
 
+  {GetDir}
+  TSF_GetDir = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+
   {FreeMem}
   TSF_FreeMem = class(TIDSysRuntimeFunction)
   public
@@ -327,6 +357,13 @@ type
     class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
   end;
 
+  {Pi}
+  TSF_Insert = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
 implementation
 
 uses AST.Delphi.Errors, AST.Lexer;
@@ -374,20 +411,21 @@ end;
 { TSF_AtomicExchange }
 
 function TSF_AtomicExchange.Process(var EContext: TEContext): TIDExpression;
-var
-  Left, Right: TIDExpression;
 begin
-  Right := EContext.RPNPopExpression();
-  Left := EContext.RPNPopExpression();
-  Result := CreateTMPExpr(EContext, SYSUnit._NativeInt);
+  var AValue := EContext.RPNPopExpression();
+  var ATarget := EContext.RPNPopExpression();
+
+  Result := CreateTMPExpr(EContext, ATarget.DataType);
   // todo:
 end;
 
 class function TSF_AtomicExchange.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
 begin
-  Result := Self.Create(Scope, 'AtomicExchange', SYSUnit._NativeInt);
-  Result.AddParam('Left', SYSUnit._Void, [VarInOut]);
-  Result.AddParam('Right', SYSUnit._Void, [VarInOut]);
+  var AVariativeType := TIDSysVariativeType.CreateAsSystem(Scope,
+                        [SysUnit._Int32, SysUnit._NativeInt, SysUnit._Pointer]);
+  Result := Self.Create(Scope, 'AtomicExchange', AVariativeType);
+  Result.AddParam('Target', SYSUnit._Void, [VarInOut]);
+  Result.AddParam('Value', AVariativeType);
 end;
 
 { TSF_AtomicCmpExchange }
@@ -420,11 +458,11 @@ begin
   if not Assigned(Expr) then
     AbortWork('DEFINE String expected', TTextPosition.Empty);
 
-  if Ctx.Scope.FindIDRecurcive(Expr.AsStrConst.Value) <> nil then
+  // take the name of the declaration (could be any, const, type, etc) and find it in the scope...
+  if Ctx.Scope.FindIDRecurcive(Expr.Declaration.Name) <> nil then
     Result := SYSUnit._TrueExpression
   else
     Result := SYSUnit._FalseExpression;
-
 end;
 
 class function TSCTF_Declared.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
@@ -653,7 +691,7 @@ begin
       if Expr.IsConstant then
         Result := IntConstExpression(EContext.SContext, Expr.AsStrConst.StrLength)
       else begin
-        var TMPVar := EContext.Proc.GetTMPVar(SYSUnit._NativeUInt);
+        var TMPVar := EContext.Proc.GetTMPVar(SYSUnit._NativeInt);
         Result := TIDExpression.Create(TMPVar, Expr.TextPosition);
       end;
     end;
@@ -723,7 +761,7 @@ end;
 
 class function TSF_Chr.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
 begin
-  Result := Self.Create(Scope, 'Chr', SYSUnit._AnsiChar);
+  Result := Self.Create(Scope, 'Chr', SYSUnit._WideChar);
   Result.AddParam('X', SYSUnit._UInt8, []);
 end;
 
@@ -732,7 +770,7 @@ var
   Expr: TIDExpression;
 begin
   Expr := EContext.RPNPopExpression();
-  Result := TIDCastExpression.Create(Expr.Declaration, SYSUnit._AnsiChar, Expr.TextPosition);
+  Result := TIDCastExpression.Create(Expr.Declaration, SYSUnit._WideChar, Expr.TextPosition);
 end;
 
 { TSF_FillChar }
@@ -832,7 +870,7 @@ end;
 class function TSF_Val.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
 begin
   Result := Self.Create(Scope, 'Val', SYSUnit._Void);
-  Result.AddParam('S', SYSUnit._String, [VarConst]);
+  Result.AddParam('S', SYSUnit._UnicodeString, [VarConst]);
   Result.AddParam('V', SYSUnit._UntypedReference, [VarInOut]);
   Result.AddParam('Code', SYSUnit._Int32, []);
 end;
@@ -871,7 +909,7 @@ class function TSF_Str.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuilt
 begin
   Result := Self.Create(Scope, 'Str', SYSUnit._Void);
   Result.AddParam('X', SYSUnit._Void, [VarConst]);
-  Result.AddParam('S', SYSUnit._String, [VarInOut]);
+  Result.AddParam('S', SYSUnit._UnicodeString, [VarInOut]);
 end;
 
 function TSF_Str.Process(var EContext: TEContext): TIDExpression;
@@ -979,7 +1017,7 @@ begin
   Result := Self.Create(Scope, 'Copy', SYSUnit._Void);
   Result.AddParam('Source', SYSUnit._Pointer, [VarConst]);
   Result.AddParam('StartChar', SYSUnit._Int32, [VarConst]);
-  Result.AddParam('Count ', SYSUnit._Int32, [VarConst]);
+  Result.AddParam('Count ', SYSUnit._Int32, [VarConst], SysUnit.SystemDeclarations._MaxIntExpression);
 end;
 
 function TSF_Copy.Process(var EContext: TEContext): TIDExpression;
@@ -1126,7 +1164,7 @@ class function TSF_Assert.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBu
 begin
   Result := Self.Create(Scope, 'Assert', SYSUnit._Void);
   Result.AddParam('Condition', SYSUnit._Boolean, [VarConst]);
-  Result.AddParam('Message', SYSUnit._String, [VarConst], SYSUnit._NullPtrExpression);
+  Result.AddParam('Message', SYSUnit._UnicodeString, [VarConst], SYSUnit._NullPtrExpression);
 end;
 
 function TSF_Assert.Process(var EContext: TEContext): TIDExpression;
@@ -1262,7 +1300,7 @@ end;
 class function TSF_Delete.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
 begin
   Result := Self.Create(Scope, 'Delete', nil);
-  Result.AddParam('Source', SYSUnit._String, [VarInOut]);
+  Result.AddParam('Source', SYSUnit._UnicodeString, [VarInOut]);
   Result.AddParam('StartChar', SYSUnit._Int32, []);
   Result.AddParam('Count', SYSUnit._Int32, []);
 end;
@@ -1275,6 +1313,109 @@ begin
   A3 := EContext.RPNPopExpression();
   A2 := EContext.RPNPopExpression();
   A1 := EContext.RPNPopExpression();
+  Result := nil;
+end;
+
+{ TSF_GetDir }
+
+class function TSF_GetDir.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, 'GetDir', nil);
+  Result.AddParam('Drive', SYSUnit._UInt8, []);
+  Result.AddParam('Directory ', SYSUnit._UnicodeString, [VarInOut]);
+end;
+
+function TSF_GetDir.Process(var EContext: TEContext): TIDExpression;
+var
+  A1, A2: TIDExpression;
+begin
+  // read arguments
+  A2 := EContext.RPNPopExpression();
+  A1 := EContext.RPNPopExpression();
+  Result := nil;
+end;
+
+{ TSCTF_Default }
+
+class function TSCTF_Default.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, 'Default', SYSUnit._Void);
+  Result.AddParam('Type', SYSUnit._Untyped, [VarConst]);
+end;
+
+function TSCTF_Default.Process(const Ctx: TSysFunctionContext): TIDExpression;
+begin
+  var ATypeExpr := Ctx.EContext.RPNPopExpression();
+  Ctx.UN.CheckType(ATypeExpr);
+  var ResVar := Ctx.EContext.SContext.Proc.GetTMPVar(ATypeExpr.AsType);
+  Result := TIDExpression.Create(ResVar, Ctx.UN.Lexer_Position);
+end;
+
+{ TSCTF_Console }
+
+class function TSCTF_Console.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, '_console', SYSUnit._Void);
+  Result.AddParam('message', SYSUnit._UnicodeString, [VarConst]);
+end;
+
+function TSCTF_Console.Process(const Ctx: TSysFunctionContext): TIDExpression;
+begin
+  var MsgArg := Ctx.EContext.RPNPopExpression();
+  Ctx.UN.CheckConstExpression(MsgArg);
+  var StrMessage := MsgArg.AsConst.AsString;
+  Ctx.UN.Package.CosoleWrite(Ctx.UN, Ctx.UN.Lexer_Line, StrMessage);
+  Result := nil;
+end;
+
+
+{ TSCTF_TypeName }
+
+class function TSCTF_TypeName.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, '_typename', SYSUnit._UnicodeString);
+  Result.AddParam('declaration', SYSUnit._Void, [VarConst]);
+  Result.AddParam('expandanonymous', SYSUnit._Boolean, [], SysUnit._FalseExpression);
+end;
+
+function TSCTF_TypeName.Process(const Ctx: TSysFunctionContext): TIDExpression;
+begin
+  var ExpandArg := Ctx.EContext.RPNPopExpression();
+  var DeclArg := Ctx.EContext.RPNPopExpression();
+  var ADataType: TIDType := nil;
+  case DeclArg.ItemType of
+    itVar, itConst, itProperty: ADataType := DeclArg.DataType;
+    itType: ADataType := DeclArg.AsType;
+  end;
+
+  var ATypeName := '';
+  if Assigned(ADataType) then
+  begin
+    if ExpandArg.AsBoolConst.Value then
+      ATypeName := ADataType.DisplayName
+    else
+      ATypeName := ADataType.Name;
+  end;
+
+  var StrConst := TIDStringConstant.CreateAsAnonymous(Ctx.Scope, SYSUnit._UnicodeString, ATypeName);
+  Result := TIDExpression.Create(StrConst, Ctx.UN.Lexer_Position);
+end;
+
+{ TSF_Insert }
+
+class function TSF_Insert.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, 'Insert', SYSUnit._Void);
+  Result.AddParam('Source', SYSUnit._Untyped, [VarInOut]);
+  Result.AddParam('Dest', SYSUnit._Untyped, [VarInOut]);
+  Result.AddParam('Index', SYSUnit._Int32, []);
+end;
+
+function TSF_Insert.Process(var EContext: TEContext): TIDExpression;
+begin
+  var A3 := EContext.RPNPopExpression();
+  var A2 := EContext.RPNPopExpression();
+  var A1 := EContext.RPNPopExpression();
   Result := nil;
 end;
 

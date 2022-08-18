@@ -6,7 +6,8 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, System.Generics.Collections, AST.Pascal.Project,
   AST.Pascal.Parser, AST.Delphi.Classes, SynEdit, SynEditHighlighter, SynEditCodeFolding, SynHighlighterPas, AST.Delphi.Project,
-  Vcl.ComCtrls, System.Types, Vcl.ExtCtrls, AST.Intf, AST.Parser.ProcessStatuses, Vcl.CheckLst;   // system
+  Vcl.ComCtrls, System.Types, Vcl.ExtCtrls, AST.Intf, AST.Parser.ProcessStatuses, Vcl.CheckLst, SynEditMiscClasses,
+  SynEditSearch;   // system
 
 type
   TSourceFileInfo = record
@@ -41,11 +42,18 @@ type
     chkbShowSysDecls: TCheckBox;
     chkbShowConstValues: TCheckBox;
     chkbShowAnonymous: TCheckBox;
+    Splitter2: TSplitter;
+    Panel4: TPanel;
+    SynEditSearch1: TSynEditSearch;
+    Panel5: TPanel;
+    Button5: TButton;
+    NSSearchEdit: TEdit;
     procedure Button2Click(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
     procedure Button4Click(Sender: TObject);
     procedure FormCreate(Sender: TObject);
+    procedure Button5Click(Sender: TObject);
   private
     { Private declarations }
     //fPKG: INPPackage;
@@ -164,11 +172,17 @@ begin
   Prj.Target := 'WIN-X86';
   Prj.Defines.Add('CPUX86');
   Prj.Defines.Add('MSWINDOWS');
+  Prj.OnConsoleWrite := procedure (const Module: IASTModule; Line: Integer; const Msg: string)
+                        begin
+                          Memo1.Lines.Add(format('#console: [%s: %d]: %s', [Module.Name, Line, Msg]));
+                        end;
 
   UN := TASTDelphiUnit.Create(Prj, 'test', edUnit.Text);
   Prj.AddUnit(UN, nil);
 
   ShowResult(Prj);
+
+  Prj.Clear;
 end;
 
 const cRTLUsesSource =
@@ -191,7 +205,7 @@ begin
   edAllItems.BeginUpdate;
   try
     edAllItems.Clear;
-    Project.EnumIntfDeclarations(
+    Project.EnumAllDeclarations(
       procedure(const Module: TASTModule; const Decl: TASTDeclaration)
       begin
         if not chkbShowAnonymous.Checked and (Decl.ID.Name = '') then
@@ -231,7 +245,7 @@ begin
     ShowAllItems(Project);
     CompilerMessagesToStrings(Project.Messages, Msg);
 
-    Memo1.Lines := Msg;
+    Memo1.Lines.AddStrings(Msg);
   finally
     Msg.Free;
   end;
@@ -249,6 +263,7 @@ begin
   Prj.Target := TWINX86_Target.TargetName;
   Prj.Defines.Add('CPUX86');
   Prj.Defines.Add('CPU386');
+  Prj.Defines.Add('WIN32');
   Prj.Defines.Add('MSWINDOWS');
   Prj.Defines.Add('ASSEMBLER');
   Prj.OnProgress := OnProgress;
@@ -323,6 +338,11 @@ begin
   finally
     Msg.Free;
   end;
+end;
+
+procedure TfrmTestAppMain.Button5Click(Sender: TObject);
+begin
+  edAllItems.SearchReplace(NSSearchEdit.Text, '', []);
 end;
 
 procedure TfrmTestAppMain.FormCreate(Sender: TObject);

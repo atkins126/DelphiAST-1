@@ -105,6 +105,7 @@ type
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
     function FindPublicDecl(const Name: string): TIDDeclaration;
     function GetPublicClass(const Name: string): TIDClass;
+    function GetPublicType(const Name: string): TIDType;
     function GetModuleName: string; override;
     procedure SetUnitName(const Name: string);
   public
@@ -168,6 +169,7 @@ begin
 
   fSysUnit := (Project as IASTPascalProject).SysUnit;
 
+  // add system unit implicitly
   if Assigned(fSysUnit) then
     fIntfImportedUnits.AddObject('system', fSysUnit);
 end;
@@ -289,6 +291,14 @@ var
 begin
   Res := FindPublicDecl(Name);
   Result := Res as TIDClass;
+end;
+
+function TPascalUnit.GetPublicType(const Name: string): TIDType;
+var
+  Res: TIDDeclaration;
+begin
+  Res := FindPublicDecl(Name);
+  Result := Res as TIDType;
 end;
 
 {parser methods}
