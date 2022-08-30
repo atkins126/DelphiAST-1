@@ -724,7 +724,7 @@ end;
 
 function TSysExplicitUntypedRefToAny.Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean;
 begin
-  Result := (Dst.DataTypeID in [dtPointer, dtClass, dtInterface]);
+  Result := (Dst.DataTypeID in [dtPointer, dtStaticArray, dtClass, dtInterface]);
 end;
 
 { TSysExplicitUntypedToAny }
@@ -816,7 +816,15 @@ function TSysImplicitSetFromAny.Check(const SContext: TSContext; const Src: TIDE
 begin
   Result := nil;
   if Src.IsDynArrayConst then
-    Result := TASTDelphiUnit.CheckConstDynArrayImplicit(SContext, Src, Dst);
+    Result := TASTDelphiUnit.CheckConstDynArrayImplicit(SContext, Src, Dst)
+  else
+  if Src.DataTypeId = dtSet then
+  begin
+    var DstSetType := TIDSet(Dst);
+    var SrcSetType := TIDSet(Src.DataType);
+    if DstSetType.BaseType.ActualDataType = SrcSetType.BaseType.ActualDataType then
+      Exit(DstSetType);
+  end;
 end;
 
 function TSysImplicitSetFromAny.Match(const SContext: TSContext; const Src: TIDExpression; const Dst: TIDType): TIDExpression;
@@ -830,7 +838,9 @@ begin
       var Decl := TIDSetConstant.CreateAsAnonymous(SContext.Scope, Dst, Src.AsDynArrayConst.Value);
       Result := TIDExpression.Create(Decl, Src.TextPosition);
     end;
-  end;
+  end else
+  if Src.DataTypeId = dtSet then
+    Result := Src;
 end;
 
 { TSysImplicitNullPtrToAny }

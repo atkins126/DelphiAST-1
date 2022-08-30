@@ -16,6 +16,8 @@ type
   private
     fErrors: TASTDelphiErrors;
     fSysDecls: PDelphiSystemDeclarations;
+    function CalcSets(const Left, Right: TIDConstant; Operation: TOperatorID): TIDConstant;
+    function CalcPointer(LeftConst, RightConst: TIDConstant; Operation: TOperatorID): TIDConstant;
     property Sys: PDelphiSystemDeclarations read fSysDecls;
   public
     constructor Create(const Module: IASTDelphiUnit);
@@ -44,11 +46,14 @@ begin
   Result.TextPosition := Left.TextPosition;
 end;
 
-function CalcSets(const Left, Right: TIDConstant; Operation: TOperatorID): TIDConstant;
+function TExpressionCalculator.CalcSets(const Left, Right: TIDConstant; Operation: TOperatorID): TIDConstant;
 begin
   case Operation of
+    opEqual: Result := Sys._False; // todo:
+    opNotEqual: Result := Sys._False;  // todo:
     opAdd: Result := AddSets(Left as TIDSetConstant, Right as TIDSetConstant);
     opSubtract: Result := Left; // todo:
+    opMultiply: Result := Left; // todo:
   else
     Result := nil;
   end;
@@ -246,6 +251,15 @@ begin
     AbortWork('Operation %s not supported for constants', [OperatorFullName(Operation)], Left.SourcePosition);
 
   Result := Constant;
+end;
+
+function TExpressionCalculator.CalcPointer(LeftConst, RightConst: TIDConstant; Operation: TOperatorID): TIDConstant;
+begin
+  // todo:
+  if LeftConst is TIDPointerConstant then
+    Exit(LeftConst)
+  else
+    Exit(RightConst);
 end;
 
 function TExpressionCalculator.ProcessConstOperation(Left, Right: TIDExpression; Operation: TOperatorID): TIDExpression;
@@ -449,8 +463,8 @@ var
   LeftType, RightType: TClass;
   Constant: TIDConstant;
 begin
-  L := TIDConstant(Left.Declaration);
-  R := TIDConstant(Right.Declaration);
+  L := Left.Declaration as TIDConstant;
+  R := Right.Declaration as TIDConstant;
   LeftType := L.ClassType;
   RightType := R.ClassType;
 
@@ -495,6 +509,10 @@ begin
   if (LeftType = TIDDynArrayConstant) and (RightType = TIDDynArrayConstant) then
   begin
     Constant := CalcDynArrays(L, R, Operation);
+  end else
+  if (LeftType = TIDPointerConstant) or (RightType = TIDPointerConstant) then
+  begin
+    Constant := CalcPointer(L, R, Operation)
   end else
     AbortWorkInternal('Const Calc: invalid arguments', L.SourcePosition);
 

@@ -432,7 +432,6 @@ type
   TIDRefType = class(TIDType)
   private
     fReferenceType: TIDType;
-    function GetReferenceType: TIDType;
   protected
     function GetDisplayName: string; override;
     procedure IncRefCount(RCPath: UInt32); override;
@@ -442,16 +441,19 @@ type
     constructor CreateAsSystem(Scope: TScope; const Name: string); override;
     constructor CreateAsAnonymous(Scope: TScope; ReferenceType: TIDType); virtual;
     procedure CreateStandardOperators; override;
-    property ReferenceType: TIDType read GetReferenceType write FReferenceType;
+    property ReferenceType: TIDType read fReferenceType write FReferenceType;
   end;
 
   {pointer type}
   TIDPointer = class(TIDRefType)
+  private
+    FForwardDeclaration: Boolean;
   public
     constructor Create(Scope: TScope; const ID: TIdentifier); override;
     constructor CreateAsSystem(Scope: TScope; const Name: string); override;
     constructor CreateAsAnonymous(Scope: TScope; ReferenceType: TIDType); override;
     procedure CreateStandardOperators; override;
+    property ForwardDeclaration: Boolean read FForwardDeclaration write FForwardDeclaration;
   end;
 
   {untyped referenced type}
@@ -643,6 +645,7 @@ type
     function GetInterfacesCount: Integer;
     function GetInterface(Index: Integer): TIDInterface;
   protected
+    function GetDataSize: Integer; override;
     function GetIsManaged: Boolean; override;
     function GetExtraFlags: Byte; override;
   public
@@ -869,10 +872,14 @@ type
     procedure DecRefCount(RCPath: UInt32); override;
   end;
 
+  TIDConstantClass = class of TIDConstant;
+
   {base generic constant class}
   TIDXXXConstant<T> = class(TIDConstant)
   private
     FValue: T;
+  protected
+    procedure SetAsVariant(const AValue: Variant); virtual; abstract;
   public
     constructor Create(Scope: TScope; const Identifier: TIdentifier; DataType: TIDType; Value: T); overload;
     constructor CreateAsSystem(Scope: TScope; const Name: string); override;
@@ -884,6 +891,8 @@ type
 
   {int constant}
   TIDIntConstant = class(TIDXXXConstant<Int64>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -893,20 +902,10 @@ type
     function CompareTo(Constant: TIDConstant): Integer; override;
   end;
 
-  {todo: deprecated}
-  TIDSizeofConstant = class(TIDXXXConstant<TIDType>)
-    function ValueByteSize: Integer; override;
-    function ValueDataType: TDataTypeID; override;
-    function AsInt64: Int64; override;
-    function AsString: string; override;
-    function AsVariant: Variant; override;
-    function CompareTo(Constant: TIDConstant): Integer; override;
-    procedure IncRefCount(RCPath: UInt32); override;
-    procedure DecRefCount(RCPath: UInt32); override;
-  end;
-
   {float constant}
   TIDFloatConstant = class(TIDXXXConstant<Extended>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -918,6 +917,8 @@ type
 
   {string constant}
   TIDStringConstant = class(TIDXXXConstant<string>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueByteSize: Integer; override;
     function ValueDataType: TDataTypeID; override;
@@ -930,6 +931,8 @@ type
 
   {char constant}
   TIDCharConstant = class(TIDXXXConstant<char>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -941,6 +944,9 @@ type
 
   {boolean constant}
   TIDBooleanConstant = class(TIDXXXConstant<Boolean>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
+  public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
     function AsInt64: Int64; override;
@@ -951,9 +957,13 @@ type
 
   {pointer constant}
   TIDPointerConstant = class(TIDXXXConstant<TIDDeclaration>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
+  public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
     function AsString: string; override;
+    procedure AssignValue(Source: TIDConstant); override;
   end;
 
   {array constant}
@@ -963,6 +973,8 @@ type
     function GetLength: Integer; inline;
     function GetElementType: TIDType; inline;
     function CheckAsSet: Boolean; inline;
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -991,6 +1003,7 @@ type
   TIDRangeConstant = class(TIDXXXConstant<TSubRangeRecord>)
   protected
     function GetDisplayName: string; override;
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -1002,6 +1015,8 @@ type
 
   {guid constant}
   TIDGuidConstant = class(TIDXXXConstant<TGUID>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -1019,6 +1034,8 @@ type
 
   {record constant}
   TIDRecordConstant = class(TIDXXXConstant<TIDRecordConstantFields>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -1030,6 +1047,8 @@ type
 
   {set constant}
   TIDSetConstant = class(TIDXXXConstant<TIDExpressions>)
+  protected
+    procedure SetAsVariant(const AValue: Variant); override;
   public
     function ValueDataType: TDataTypeID; override;
     function ValueByteSize: Integer; override;
@@ -1521,6 +1540,7 @@ type
    {$ENDIF}
     procedure SetParent(const Value: TScope);
   protected
+    function GetName: string; virtual;
     function GetScopeClass: TScopeClass; virtual;
     procedure AddChild(Scope: TScope);
     procedure RemoveChild(Scope: TScope);
@@ -1537,7 +1557,7 @@ type
     procedure AddScope(Scope: TScope);
     procedure RemoveVariable(Declaration: TIDVariable);
     function FindInAdditionalScopes(const ID: string): TIDDeclaration;
-    function FindIDRecurcive(const ID: string): TIDDeclaration; overload; virtual;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; virtual;
     function FindMembers(const ID: string): TIDDeclaration; virtual;
     function GetDeclArray(Recursively: Boolean = False): TIDDeclArray;
     function GetDeclNamesArray(Recursively: Boolean = False): TStrArray;
@@ -1548,7 +1568,7 @@ type
     property ScopeClass: TScopeClass read GetScopeClass;
     property DeclUnit: TASTModule read FUnit;
     property AdditionalScopes: TScopes read FAdditionalScopes;
-    {$IFDEF DEBUG}property Name: string read FName write FName;{$ENDIF}
+    {$IFDEF DEBUG}property Name: string read GetName write FName;{$ENDIF}
   end;
 
   TProcScope = class(TScope)
@@ -1566,6 +1586,8 @@ type
   TStructScope = class(TScope)
     fAncestorScope: TScope;
     fStruct: TIDStructure;
+  protected
+    function GetName: string; override;
   public
     constructor CreateAsStruct(Parent: TScope; Struct: TIDStructure; VarSpace: PVarSpace; ProcSpace: PProcSpace; DeclUnit: TASTModule); reintroduce;
     function FindIDRecurcive(const ID: string): TIDDeclaration; override;
@@ -1601,17 +1623,31 @@ type
     function FindIDRecurcive(const ID: string): TIDDeclaration; override;
   end;
 
+  TInterfaceScope = class(TScope)
+  protected
+    function GetName: string; override;
+  public
+    constructor Create(AUnit: TASTModule;
+                       VarSpace: PVarSpace;
+                       ProcSpace: PProcSpace); reintroduce;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; override;
+  end;
+
   TImplementationScope = class(TScope)
   private
     fIntfScope: TScope;
   protected
+    function GetName: string; override;
     function GetScopeClass: TScopeClass; override;
   public
-    constructor Create(InterfaceScope, Parent: TScope); overload;
+    constructor Create(InterfaceScope: TScope); reintroduce;
     function FindID(const Identifier: string): TIDDeclaration; override;
+    function FindIDRecurcive(const ID: string): TIDDeclaration; override;
   end;
 
   TConditionalScope = class(TScope)
+  protected
+    function GetName: string; override;
   end;
 
   TASTDelphiLabel = class(TIDDeclaration)
@@ -1664,6 +1700,8 @@ const
   );
 
   function IsClassProc(AProcType: TProcType): Boolean; inline;
+
+  function GetConstantClassByDataType(DataTypeID: TDataTypeID): TIDConstantClass;
 
 implementation
 
@@ -2060,6 +2098,11 @@ begin
   SetLength(Result, Length(Decls));
   for var i := 0 to Length(Decls) - 1 do
     Result[i] := Decls[i].Name;
+end;
+
+function TScope.GetName: string;
+begin
+  Result := FName;
 end;
 
 { TIDList }
@@ -3058,6 +3101,7 @@ end;
 
 procedure TIDType.OverloadImplicitTo(const Destination: TIDDeclaration);
 begin
+  Assert(Assigned(Destination));
   if Assigned(FImplicitsTo.InsertNode(Destination, Destination)) then
     ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Self, Destination, TextPosition);
 end;
@@ -3066,6 +3110,7 @@ procedure TIDType.OverloadImplicitTo(const Destination, Proc: TIDDeclaration);
 var
   Node: TIDPairList.PAVLNode;
 begin
+  Assert(Assigned(Destination));
   Node := FImplicitsTo.InsertNode(Destination, Proc);
   if Assigned(Node) then
     ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Destination, Proc, TextPosition);
@@ -3073,12 +3118,14 @@ end;
 
 procedure TIDType.OverloadImplicitFrom(const Source: TIDDeclaration);
 begin
+  Assert(Assigned(Source));
   if Assigned(FImplicitsFrom.InsertNode(Source, Source)) then
     ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Self, Source, TextPosition);
 end;
 
 procedure TIDType.OverloadImplicitFrom(const Source, Proc: TIDDeclaration);
 begin
+  Assert(Assigned(Source));
   if Assigned(FImplicitsFrom.InsertNode(Source, Proc)) then
     ERROR_OPERATOR_ALREADY_OVERLOADED(opImplicit, Source, Proc, TextPosition);
 end;
@@ -3211,8 +3258,11 @@ end;
 procedure TIDXXXConstant<T>.AssignValue(Source: TIDConstant);
 begin
   FIndex := Source.Index;
-  FValue := TIDXXXConstant<T>(Source).Value;
-  FDataType := TIDXXXConstant<T>(Source).DataType;
+  if Source.ClassType = ClassType then
+  begin
+    FValue := TIDXXXConstant<T>(Source).Value
+  end else
+    SetAsVariant(Source.AsVariant);
 end;
 
 constructor TIDXXXConstant<T>.Create(Scope: TScope; const Identifier: TIdentifier; DataType: TIDType; Value: T);
@@ -4053,6 +4103,11 @@ begin
     Result := -1;
 end;
 
+procedure TIDIntConstant.SetAsVariant(const AValue: Variant);
+begin
+  FValue := AValue;
+end;
+
 { TIDFloatConstant }
 
 function TIDFloatConstant.AsInt64: Int64;
@@ -4098,6 +4153,11 @@ begin
     Result := -1;
 end;
 
+procedure TIDFloatConstant.SetAsVariant(const AValue: Variant);
+begin
+  FValue := AValue;
+end;
+
 { TIDStringConstant }
 
 function TIDStringConstant.AsInt64: Int64;
@@ -4131,6 +4191,11 @@ begin
     Result :=  AnsiCompareStr(Value, TIDStringConstant(Constant).Value)
   else
     Result := -1;
+end;
+
+procedure TIDStringConstant.SetAsVariant(const AValue: Variant);
+begin
+  FValue := AValue;
 end;
 
 function TIDStringConstant.StrLength: Integer;
@@ -4173,6 +4238,14 @@ begin
     Result := -1;
 end;
 
+procedure TIDCharConstant.SetAsVariant(const AValue: Variant);
+begin
+  var AStr := string(AValue);
+  Assert(Length(AStr) <= 1);
+  if AStr <> '' then
+    FValue := AStr[1];
+end;
+
 { TIDBooleanConstant }
 
 function TIDBooleanConstant.AsInt64: Int64;
@@ -4209,6 +4282,11 @@ begin
     Result := Integer(Value) - Integer(TIDBooleanConstant(Constant).Value)
   else
     Result := -1;
+end;
+
+procedure TIDBooleanConstant.SetAsVariant(const AValue: Variant);
+begin
+  FValue := AValue;
 end;
 
 { TIDArray }
@@ -4369,21 +4447,6 @@ begin
     end;
   end else
     Result := '^' + ReferenceType.DisplayName;
-end;
-
-function TIDRefType.GetReferenceType: TIDType;
-var
-  Decl: TIDDeclaration;
-begin
-  if not Assigned(FReferenceType) and NeedForward then
-  begin
-    Decl := Scope.FindID(ForwardID.Name);
-    if Assigned(Decl) and (Decl.ItemType = itType) then
-      FReferenceType := TIDType(Decl)
-    else
-      TASTDelphiErrors.UNDECLARED_ID(ForwardID);
-  end;
-  Result := FReferenceType;
 end;
 
 procedure TIDRefType.IncRefCount(RCPath: UInt32);
@@ -4794,6 +4857,11 @@ begin
   Result := Length(Value);
 end;
 
+procedure TIDDynArrayConstant.SetAsVariant(const AValue: Variant);
+begin
+  // todo:
+end;
+
 function DeclarationName(Decl: TIDDeclaration; IsList: Boolean = False): string;
 begin
   if Assigned(Decl) then
@@ -4996,7 +5064,7 @@ end;
 function TIDAliasType.GetDisplayName: string;
 begin
   Result := inherited GetDisplayName;
-  Result := '(' + fOriginalType.DisplayName + ')';
+  Result := 'alias of ' + fOriginalType.DisplayName;
 end;
 
 function TIDAliasType.GetIndex: Integer;
@@ -5145,16 +5213,51 @@ begin
   Result := inherited GetDisplayName + ' as ' + FDataType.DisplayName
 end;
 
+{ TInterfaceScope }
+
+constructor TInterfaceScope.Create(AUnit: TASTModule;
+                       VarSpace: PVarSpace;
+                       ProcSpace: PProcSpace);
+begin
+  inherited Create(StrCICompare);
+  FScopeType := stGlobal;
+  FVarSpace := VarSpace;
+  FProcSpace := ProcSpace;
+  FUnit := AUnit;
+  Assert(Assigned(AUnit));
+end;
+
+function TInterfaceScope.FindIDRecurcive(const ID: string): TIDDeclaration;
+begin
+  Result := inherited FindIDRecurcive(ID);
+
+  if not Assigned(Result) then
+  begin
+    var List := TPascalUnit(fUnit).IntfImportedUnits;
+    for var LIndex := List.Count - 1 downto 0 do
+    begin
+      var LUnit := TPascalUnit(List.Objects[LIndex]);
+      Result := LUnit.IntfScope.FindID(ID);
+      if Assigned(Result) then
+        Exit;
+    end;
+  end;
+end;
+
+function TInterfaceScope.GetName: string;
+begin
+  Result := fUnit.Name + '$intf_scope';
+end;
+
 { TImplementationScope }
 
-constructor TImplementationScope.Create(InterfaceScope, Parent: TScope);
+constructor TImplementationScope.Create(InterfaceScope: TScope);
 begin
   inherited Create(StrCICompare);
   FScopeType := InterfaceScope.ScopeType;
   FVarSpace := InterfaceScope.VarSpace;
   FProcSpace := InterfaceScope.ProcSpace;
   FIntfScope := InterfaceScope;
-  FParent := Parent;
   FUnit := InterfaceScope.DeclUnit;
   Assert(Assigned(FUnit));
 end;
@@ -5164,6 +5267,40 @@ begin
   Result := inherited FindID(Identifier);
   if not Assigned(Result) then
     Result := FIntfScope.FindID(Identifier);
+end;
+
+function TImplementationScope.FindIDRecurcive(const ID: string): TIDDeclaration;
+begin
+  Result := inherited FindIDRecurcive(ID);
+
+  if not Assigned(Result) then
+  begin
+    var List := TPascalUnit(fUnit).ImplImportedUnits;
+    for var LIndex := List.Count - 1 downto 0 do
+    begin
+      var LUnit := TPascalUnit(List.Objects[LIndex]);
+      Result := LUnit.IntfScope.FindID(ID);
+      if Assigned(Result) then
+        Exit;
+    end;
+  end;
+
+  if not Assigned(Result) then
+  begin
+    var List := TPascalUnit(fUnit).IntfImportedUnits;
+    for var LIndex := List.Count - 1 downto 0 do
+    begin
+      var LUnit := TPascalUnit(List.Objects[LIndex]);
+      Result := LUnit.IntfScope.FindID(ID);
+      if Assigned(Result) then
+        Exit;
+    end;
+  end;
+end;
+
+function TImplementationScope.GetName: string;
+begin
+  Result := fUnit.Name + '$impl_scope';
 end;
 
 function TImplementationScope.GetScopeClass: TScopeClass;
@@ -5406,6 +5543,11 @@ begin
   Result := FValue.LBExpression.DisplayName + '..' + FValue.HBExpression.DisplayName;
 end;
 
+procedure TIDRangeConstant.SetAsVariant(const AValue: Variant);
+begin
+  // todo:
+end;
+
 { TProcScope }
 
 constructor TProcScope.CreateInBody(Parent: TScope);
@@ -5625,60 +5767,6 @@ begin
   Result := FOriginalDecl;
 end;
 
-{ TIDSizeofConstant }
-
-function TIDSizeofConstant.AsInt64: Int64;
-begin
-  Result := FValue.Index;
-end;
-
-function TIDSizeofConstant.AsString: string;
-begin
-  Result := 'sizeof(' + FValue.DisplayName + ')';
-end;
-
-function TIDSizeofConstant.AsVariant: Variant;
-begin
-  Result := NULL;
-  AbortWorkInternal('Not supported', []);
-end;
-
-function TIDSizeofConstant.ValueByteSize: Integer;
-begin
-  Result := GetValueByteSize(FValue.Index);
-end;
-
-function TIDSizeofConstant.ValueDataType: TDataTypeID;
-begin
-  Result := GetValueDataType(FValue.Index);
-end;
-
-function TIDSizeofConstant.CompareTo(Constant: TIDConstant): Integer;
-begin
-  if ClassType = Constant.ClassType then
-    Result := NativeInt(Value) - NativeInt(TIDIntConstant(Constant).Value)
-  else
-    Result := -1;
-end;
-
-procedure TIDSizeofConstant.IncRefCount(RCPath: UInt32);
-begin
-  if FRCPath = RCPath then
-    Exit;
-  FRCPath := RCPath;
-  Inc(FRefCount);
-  Value.IncRefCount(RCPath);
-end;
-
-procedure TIDSizeofConstant.DecRefCount(RCPath: UInt32);
-begin
-  if FRCPath = RCPath then
-    Exit;
-  FRCPath := RCPath;
-  Dec(FRefCount);
-  Value.DecRefCount(RCPath);
-end;
-
 { TGenericDescriptor }
 
 procedure TGenericDescriptor.AddGenericInstance(Decl: TIDDeclaration; const Args: TIDExpressions);
@@ -5851,6 +5939,16 @@ begin
     Result := nil;
 end;
 
+function TStructScope.GetName: string;
+begin
+  Result := format('%s$struct_scope(parent: %s)', [fStruct.Name, Parent.Name]);
+end;
+
+function TIDClass.GetDataSize: Integer;
+begin
+  Result := Package.PointerSize;
+end;
+
 function TIDClass.GetExtraFlags: Byte;
 begin
   Result := 0;
@@ -5933,6 +6031,11 @@ end;
 function TIDGuidConstant.CompareTo(Constant: TIDConstant): Integer;
 begin
   Result := -1;
+end;
+
+procedure TIDGuidConstant.SetAsVariant(const AValue: Variant);
+begin
+  // todo:
 end;
 
 { TIDDrefExpression }
@@ -6063,6 +6166,11 @@ begin
   Result := 0;
 end;
 
+procedure TIDRecordConstant.SetAsVariant(const AValue: Variant);
+begin
+  // todo:
+end;
+
 function TIDRecordConstant.ValueByteSize: Integer;
 begin
   Result := 0;
@@ -6172,6 +6280,11 @@ begin
   Result := 0;
 end;
 
+procedure TIDSetConstant.SetAsVariant(const AValue: Variant);
+begin
+  // todo:
+end;
+
 function TIDSetConstant.ValueByteSize: Integer;
 begin
   Result := 0;
@@ -6184,9 +6297,22 @@ end;
 
 { TIDPointerConstant }
 
+procedure TIDPointerConstant.AssignValue(Source: TIDConstant);
+begin
+  FValue := Source;
+end;
+
 function TIDPointerConstant.AsString: string;
 begin
-  Result := 'not supported';  // todo
+  if Assigned(FValue) and (FValue.ItemType = itConst) then
+    Result := TIDConstant(FValue).AsString
+  else
+    Result := '<uknown>';
+end;
+
+procedure TIDPointerConstant.SetAsVariant(const AValue: Variant);
+begin
+  // todo:
 end;
 
 function TIDPointerConstant.ValueByteSize: Integer;
@@ -6227,6 +6353,50 @@ begin
   for var AType in FTypes do
     Result := AddStringSegment(Result, AType.DisplayName, ' or ');
   Result := Result + '>';
+end;
+
+
+function GetConstantClassByDataType(DataTypeID: TDataTypeID): TIDConstantClass;
+begin
+  case DataTypeID of
+    dtInt8, dtInt16, dtInt32, dtInt64,
+    dtUInt8, dtUInt16, dtUInt32, dtUInt64,
+    dtNativeInt, dtNativeUInt, dtEnum, dtRange: Result := TIDIntConstant;
+
+    dtFloat32, dtFloat64, dtFloat80, dtCurrency: Result := TIDFloatConstant;
+
+    dtBoolean: Result := TIDBooleanConstant;
+
+    dtAnsiChar,
+    dtChar: Result := TIDCharConstant;
+
+    dtShortString,
+    dtAnsiString,
+    dtString,
+    dtWideString: Result := TIDStringConstant;
+
+    dtPAnsiChar,
+    dtPWideChar,
+    dtPointer: Result := TIDPointerConstant;
+
+    dtSet: Result := TIDSetConstant;
+
+    dtStaticArray,
+    dtDynArray: Result := TIDDynArrayConstant;
+    dtRecord: Result := TIDRecordConstant;
+    dtGuid: Result := TIDGuidConstant;
+
+  else
+    Result := nil;
+    AbortWorkInternal('Unknown constant type');
+  end;
+end;
+
+{ TConditionalScope }
+
+function TConditionalScope.GetName: string;
+begin
+  Result := format('conditional$scope(parent: %s)', [Parent.Name]);
 end;
 
 initialization

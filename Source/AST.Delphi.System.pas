@@ -891,12 +891,9 @@ begin
   FTObject.NeedForward := True; // forward declaration
   InsertToScope(FTObject);}
   // TGUID ========================================================
-  fDecls._GuidType := TIDStructure.CreateAsSystem(IntfScope, '_TGUID');
+  fDecls._GuidType := TIDRecord.CreateAsSystem(IntfScope, 'TGUID');
+  fDecls._GuidType.NeedForward := True;
   fDecls._GuidType.DataTypeID := dtGuid;
-  fDecls._GuidType.AddField('LoDWord', _Int64);
-  fDecls._GuidType.AddField('HiDWord', _Int64);
-  fDecls._GuidType.OverloadBinarOperator2(opEqual, fDecls._GuidType, _Boolean);
-  fDecls._GuidType.OverloadBinarOperator2(opNotEqual, fDecls._GuidType, _Boolean);
   fDecls._GuidType.DataType := _MetaType;
   InsertToScope(fDecls._GuidType);
   AddType(fDecls._GuidType);
@@ -991,6 +988,9 @@ begin
   // constant ""
   fDecls._EmptyStrConstant := TIDStringConstant.CreateAsAnonymous(IntfScope, _UnicodeString, '');
   fDecls._EmptyStrExpression := TIDExpression.Create(fDecls._EmptyStrConstant);
+  // constant "[]"
+  fDecls._EmptyArrayConstant := TIDDynArrayConstant.CreateAsAnonymous(IntfScope, _Void, []);
+
   // constant for deprecated
   fDecls._DeprecatedDefaultStr := TIDStringConstant.CreateAsSystem(IntfScope, 'The declaration is deprecated');
 
@@ -1011,6 +1011,7 @@ end;
 
 procedure TSYSTEMUnit.SearchSystemTypes;
 begin
+  // todo: use forward declaration instead
   fDecls._TObject := GetPublicClass('TObject');
   fDecls._ResStringRecord := GetPublicType('PResStringRec');
   fDecls._TVarRec := GetPublicType('TVarRec');
@@ -1098,6 +1099,7 @@ begin
 
   RegisterVariable(ImplScope, 'ReturnAddress', _Pointer);
   RegisterConstStr(ImplScope, 'libmmodulename', '');
+  RegisterConstInt('CompilerVersion', _Int32, 35); // Delphi 11.x
 end;
 
 function TSYSTEMUnit.RegisterOrdinal(const TypeName: string; DataType: TDataTypeID; LowBound: Int64; HighBound: UInt64): TIDType;

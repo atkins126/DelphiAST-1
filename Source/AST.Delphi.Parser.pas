@@ -34,6 +34,7 @@ uses
 
 type
 
+  {anonymous types cache}
   TDeclCache = class
   private
     fRanges: TList<TIDRangeType>;
@@ -80,8 +81,7 @@ type
     procedure InitEContext(out EContext: TEContext; const SContext: TSContext; EPosition: TExpessionPosition); overload; inline;
     procedure AddType(const Decl: TIDType);
     class function CheckExplicit(const SContext: TSContext; const Source, Destination: TIDType; out ExplicitOp: TIDDeclaration): Boolean; overload; static;
-    class function MatchExplicit(const SContext: TSContext; const Source: TIDExpression; Destination: TIDType): TIDDeclaration; overload; static;
-    class function MatchExplicit2(const SContext: TSContext; const Source: TIDExpression; Destination: TIDType; out Explicit: TIDDeclaration): TIDExpression; overload; static;
+    class function MatchExplicit(const SContext: TSContext; const Source: TIDExpression; Destination: TIDType; out Explicit: TIDDeclaration): TIDExpression; overload; static;
 
     //class function MatchArrayImplicitToRecord(const SContext: TSContext; Source: TIDExpression; Destination: TIDStructure): TIDExpression; static;
 
@@ -304,6 +304,7 @@ type
     function ParseGenericsHeader(Params: TScope; out Args: TIDTypeList): TTokenID;
     function ParseGenericsArgs(Scope: TScope; const SContext: TSContext; out Args: TIDExpressions): TTokenID;
     function ParseStatements(Scope: TScope; const SContext: TSContext; IsBlock: Boolean): TTokenID; overload;
+    function GetPtrReferenceType(Decl: TIDPointer): TIDType;
 
     function ParseExpression(Scope: TScope; const SContext: TSContext; var EContext: TEContext; out ASTE: TASTExpression): TTokenID; overload;
     function ParseConstExpression(Scope: TScope; out Expr: TIDExpression; EPosition: TExpessionPosition): TTokenID;
@@ -316,6 +317,7 @@ type
     function ParsePropertyMember(var PMContext: TPMContext; Scope: TScope; Prop: TIDProperty; out Expression: TIDExpression;
                                  var EContext: TEContext; const PrevExpr: TIDExpression): TTokenID;
     function ParseIndexedPropertyArgs(Scope: TScope; out ArgumentsCount: Integer; var EContext: TEContext): TTokenID;
+    function InferTypeByVector(Scope: TScope; Vector: TIDExpressions): TIDType;
     procedure ParseVector(Scope: TScope; var EContext: TEContext);
     function ParseEntryCall(Scope: TScope; CallExpr: TIDCallExpression; const EContext: TEContext; const ASTE: TASTExpression): TTokenID;
     function ParseBuiltinCall(Scope: TScope; CallExpr: TIDExpression; var EContext: TEContext): TTokenID;
@@ -981,16 +983,22 @@ begin
     Exit;
   end;
 
-  Decl := TIDRecord.Create(Scope, ID);
-  Decl.GenericDescriptor := GDescriptor;
-  if Assigned(GenericScope) then
-    TIDRecord(Decl).Members.AddScope(GenericScope);
+  // try to find forward declaration first (for system types)
+  var FForwardDecl := FindIDNoAbort(Scope, ID);
+  if Assigned(FForwardDecl) and (FForwardDecl is TIDRecord) and TIDType(FForwardDecl).NeedForward then
+    Decl := TIDRecord(FForwardDecl)
+  else begin
+    Decl := TIDRecord.Create(Scope, ID);
+    Decl.GenericDescriptor := GDescriptor;
+    if Assigned(GenericScope) then
+      TIDRecord(Decl).Members.AddScope(GenericScope);
 
-  if ID.Name <> '' then begin
-    if Assigned(GDescriptor) then
-      InsertToScope(Scope, GDescriptor.SearchName, Decl)
-    else
-      InsertToScope(Scope, Decl);
+    if ID.Name <> '' then begin
+      if Assigned(GDescriptor) then
+        InsertToScope(Scope, GDescriptor.SearchName, Decl)
+      else
+        InsertToScope(Scope, Decl);
+    end;
   end;
 
   Result := ParseRecordType(Scope, TIDRecord(Decl));
@@ -1133,36 +1141,43 @@ function TASTDelphiUnit.ParseUsesSection(Scope: TScope): TTokenID;
 var
   Token: TTokenID;
   ID: TIdentifier;
-  UUnit: TPascalUnit;
+  LUnit: TPascalUnit;
   Idx: Integer;
 begin
-  while true do begin
-    Token := ParseUnitName(Scope, ID);
+  while True do begin
+    Token := ParseUnitName(Scope, {out} ID);
 
+    // check recursive using
     if ID.Name = Self.FUnitName.Name then
       ERRORS.UNIT_RECURSIVELY_USES_ITSELF(ID);
 
-    UUnit := Package.UsesUnit(ID.Name, nil) as TPascalUnit;
-    if not Assigned(UUnit) then
+    // find the unit file
+    LUnit := Package.UsesUnit(ID.Name, nil) as TPascalUnit;
+    if not Assigned(LUnit) then
       ERRORS.UNIT_NOT_FOUND(ID);
 
-    // если модуль используется первый раз - компилируем
-    if UUnit.Compiled = CompileNone then
+    // check unique using
+    if IntfImportedUnits.Find(ID.Name, {var} Idx) or
+       ImplImportedUnits.Find(ID.Name, {var} Idx) then
     begin
-      if UUnit.Compile() = CompileFail then begin
+      //if (LUnit <> SYSUnit) or FSystemExplicitUse then
+      ERRORS.ID_REDECLARATED(ID);
+    end;
+
+    // compile if not compiled yet
+    if LUnit.Compiled = CompileNone then
+    begin
+      if LUnit.Compile() = CompileFail then
         StopCompile(False);
-      end;
     end;
 
-    if not IntfImportedUnits.Find(ID.Name, Idx) then
-      IntfImportedUnits.AddObject(ID.Name, UUnit)
-    else begin
-      if (UUnit <> SYSUnit) or FSystemExplicitUse then
-        ERRORS.ID_REDECLARATED(ID);
-    end;
-
-    if UUnit = SYSUnit then
-      FSystemExplicitUse := True;
+    if Scope = IntfScope then
+      IntfImportedUnits.AddObject(ID.Name, LUnit)
+    else
+    if Scope = ImplScope then
+      ImplImportedUnits.AddObject(ID.Name, LUnit)
+    else
+      AbortWorkInternal('Wrong scope');
 
     case Token of
       token_coma: continue;
@@ -1815,6 +1830,7 @@ begin
   fCache.Free;
   fDefines.Free;
   fOptions.Free;
+  fErrors.Free;
   inherited;
 end;
 
@@ -1983,9 +1999,7 @@ begin
       Op := FindBinaryOperator(EContext.SContext, OpID, Left, Right);
 
       // если аргументы - константы, производим константные вычисления
-      if (Left.IsConstant and Right.IsConstant) and
-         (Left.Declaration.ClassType <> TIDSizeofConstant) and
-         (Right.Declaration.ClassType <> TIDSizeofConstant) then
+      if Left.IsConstant and Right.IsConstant then
       begin
         Result := fCCalc.ProcessConstOperation(Left, Right, OpID);
         Exit;
@@ -2069,11 +2083,13 @@ begin
     AddType(DataType);
   end;
 
-  // resourcestring support
   if Expr.IsConstant and (Expr.DataTypeID in [dtString, dtAnsiString]) then
   begin
-    var RStr := TIDPointerConstant.CreateAsAnonymous(IntfScope, EContext.SContext.SysUnit._ResStringRecord, Expr.Declaration);
-    Result := TIDExpression.Create(RStr, Expr.TextPosition);
+    // resourcestring -> PResStringRec support
+    var LConst := TIDPointerConstant.CreateAsAnonymous(IntfScope,
+                                                       Sys._ResStringRecord,
+                                                       Expr.AsConst);
+    Result := TIDExpression.Create(LConst, Expr.TextPosition);
   end else
   if Expr.IsTMPVar and Expr.AsVariable.Reference then
   begin
@@ -2129,7 +2145,7 @@ begin
   CheckPointerType(Src);
 
   PtrType := Src.DataType as TIDPointer;
-  RefType := PtrType.ReferenceType;
+  RefType := GetPtrReferenceType(PtrType);
   if not Assigned(RefType) then
     RefType := Sys._Untyped;
 
@@ -2168,7 +2184,7 @@ begin
   if not Assigned(OperatorItem) then
     ERRORS.NO_OVERLOAD_OPERATOR_FOR_TYPES(opNegative, Right);
 
-  if (Right.ItemType = itConst) and (Right.ClassType <> TIDSizeofConstant) then
+  if Right.ItemType = itConst then
     Result := fCCalc.ProcessConstOperation(Right, Right, opNegative)
   else begin
     Result := GetTMPVarExpr(EContext, OperatorItem.DataType, Right.TextPosition);
@@ -2187,7 +2203,7 @@ begin
   if not Assigned(OperatorItem) then
     ERRORS.NO_OVERLOAD_OPERATOR_FOR_TYPES(opNot, Right);
 
-  if (Right.ItemType = itConst) and (Right.ClassType <> TIDSizeofConstant) then
+  if Right.ItemType = itConst then
     Result := fCCalc.ProcessConstOperation(Right, Right, opNot)
   else begin
     var WasCall := False;
@@ -2788,7 +2804,6 @@ end;
 
 procedure TASTDelphiUnit.InsertToScope(Scope: TScope; Item: TIDDeclaration);
 begin
-  Item.DisplayName;
   if not Scope.InsertID(Item) then
     ERRORS.ID_REDECLARATED(Item);
 end;
@@ -3057,50 +3072,18 @@ var
 begin
   IDName := ID.Name;
   Result := Scope.FindIDRecurcive(IDName);
-  if Assigned(Result) then
-    Exit;
-  with IntfImportedUnits do
-  begin
-    for i := Count - 1 downto 0 do begin
-      Result := TPascalUnit(Objects[i]).IntfScope.FindID(IDName);
-      if Assigned(Result) then
-        Exit;
-    end;
-  end;
-  ERRORS.UNDECLARED_ID(ID);
+  if not Assigned(Result) then
+    ERRORS.UNDECLARED_ID(ID);
 end;
 
 function TASTDelphiUnit.FindIDNoAbort(Scope: TScope; const ID: string): TIDDeclaration;
-var
-  i: Integer;
 begin
   Result := Scope.FindIDRecurcive(ID);
-  if Assigned(Result) then
-    Exit;
-  with IntfImportedUnits do
-    for i := Count - 1 downto 0 do begin
-      Result := TPascalUnit(Objects[i]).IntfScope.FindID(ID);
-      if Assigned(Result) then
-        Exit;
-    end;
 end;
 
 function TASTDelphiUnit.FindIDNoAbort(Scope: TScope; const ID: TIdentifier): TIDDeclaration;
-var
-  i: Integer;
-  IDName: string;
 begin
-  IDName := ID.Name;
-  Result := Scope.FindIDRecurcive(IDName);
-  if Assigned(Result) then
-    Exit;
-  for i := IntfImportedUnits.Count - 1 downto 0 do
-  begin
-    var un := TPascalUnit(IntfImportedUnits.Objects[i]);
-    Result := un.IntfScope.FindID(IDName);
-    if Assigned(Result) then
-      Exit;
-  end;
+  Result := Scope.FindIDRecurcive(ID.Name);
 end;
 
 procedure TASTDelphiUnit.AddType(const Decl: TIDType);
@@ -3191,12 +3174,14 @@ begin
 end;
 
 function TASTDelphiUnit.MatchArrayImplicit(const SContext: TSContext; Source: TIDExpression; DstArray: TIDArray): TIDExpression;
+
   function CreateAnonymousDynArrayType(ElementDataType: TIDType): TIDArray;
   begin
     Result := TIDDynArray.CreateAsAnonymous(ImplScope);
     Result.ElementDataType := ElementDataType;
     AddType(Result);
   end;
+
 var
   i, ACnt: Integer;
   CArray: TIDDynArrayConstant;
@@ -3282,42 +3267,6 @@ begin
     end;
   end;
 end;
-
-//class function TASTDelphiUnit.MatchArrayImplicitToRecord(const SContext: TSContext; Source: TIDExpression; Destination: TIDStructure): TIDExpression;
-//var
-//  i, TupleItemsCount: Integer;
-//  ItemExpr: TIDExpression;
-//  Field: TIDVariable;
-//  FieldDataType: TIDType;
-//  Tuple: TIDDynArrayConstant;
-//  ImplicitCast: TIDDeclaration;
-////  NeedCallImplicits: Boolean;
-//begin
-//  if not Source.IsDynArrayConst then
-//    Exit(nil);
-//  Tuple := Source.AsDynArrayConst;
-//  TupleItemsCount := Tuple.ArrayLength;
-//
-//  if TupleItemsCount <> Destination.FieldsCount then
-//    AbortWork('Invalid fields count', Source.TextPosition);
-//
-//  Field := Destination.FirstField;
-//
-//  for i := 0 to TupleItemsCount - 1 do begin
-//    ItemExpr := Tuple.Value[i];
-//    FieldDataType := Field.DataType.ActualDataType;
-//    ImplicitCast := CheckImplicit(SContext, ItemExpr, FieldDataType);
-//
-//    if not Assigned(ImplicitCast) then
-//      SContext.ERRORS.INCOMPATIBLE_TYPES(ItemExpr, FieldDataType);
-//
-//    {if ImplicitCast.ItemType = itProcedure then
-//      NeedCallImplicits := True;}
-//
-//    Field := TIDVariable(Field.NextItem);
-//  end;
-//  Result := Source;
-//end;
 
 function TASTDelphiUnit.MatchRecordImplicit(const SContext: TSContext; Source: TIDExpression; DstRecord: TIDRecord): TIDExpression;
 var
@@ -3554,7 +3503,7 @@ begin
             ERRORS.INPLACEVAR_ALLOWED_ONLY_FOR_OUT_PARAMS(Arg.AsVariable);
         end;
 
-        Implicit := CheckImplicit(SContext, Arg, Param.DataType);
+        Implicit := CheckImplicit(SContext, Arg, Param.DataType, {AResolveCalls:} True);
         if Assigned(Implicit) then
         begin
           if Param.VarReference then
@@ -3567,14 +3516,6 @@ begin
           continue;
         end;
 
-        var WasCall := False;
-        Arg := CheckAndCallFuncImplicit(SContext, Arg, WasCall);
-        if WasCall then
-        begin
-          Implicit := CheckImplicit(SContext, Arg, Param.DataType);
-          if Assigned(Implicit) then
-            continue;
-        end;
         ERRORS.INCOMPATIBLE_TYPES(Arg, Param.DataType);
       end else
       if not Assigned(Param.DefaultValue) then
@@ -3799,7 +3740,7 @@ function TASTDelphiUnit.MatchOverloadProc(const SContext: TSContext; Item: TIDEx
     begin
       ProcItem := Addr(fProcMatches[i]);
       if ProcItem.TotalRate = AmbiguousRate then
-        Str := Str + #13#10'  ' + ProcItem.Decl.DisplayName;
+        Str := Str + #13#10'  ' + ProcItem.Decl.Module.Name + '.' + ProcItem.Decl.DisplayName;
     end;
     for var i := 0 to CallArgsCount - 1 do
       Args := AddStringSegment(Args, CallArgs[i].DataType.DisplayName, ', ');
@@ -3861,7 +3802,7 @@ begin
             curLevel := TASTArgMatchLevel.MatchStrict
           else begin
             // find implicit type cast
-            ImplicitCast := CheckImplicit(SContext, CallArgs[i], ParamDataType);
+            ImplicitCast := CheckImplicit(SContext, CallArgs[i], ParamDataType, {AResolveCalls:} True);
             if Assigned(ImplicitCast) then
             begin
               SrcDataTypeID := ArgDataType.DataTypeID;
@@ -4017,42 +3958,6 @@ begin
   end;
 end;
 
-class function TASTDelphiUnit.MatchExplicit(const Scontext: TSContext; const Source: TIDExpression; Destination: TIDType): TIDDeclaration;
-var
-  SrcDataType: TIDType;
-  DstDataType: TIDType;
-begin
-  SrcDataType := Source.DataType.ActualDataType;
-  DstDataType := Destination.ActualDataType;
-  if SrcDataType = DstDataType then
-    Exit(Destination);
-
-  Result := SrcDataType.GetExplicitOperatorTo(DstDataType);
-  if Assigned(Result) then
-  begin
-    if Result is TSysTypeCast then
-    begin
-      Result := TSysTypeCast(Result).Check(SContext, Source, DstDataType);
-      if Assigned(Result) then
-        Exit;
-    end else
-      Exit;
-  end;
-
-  if not Assigned(Result) then
-  begin
-    Result := DstDataType.GetExplicitOperatorFrom(SrcDataType);
-    if Assigned(Result) then
-    begin
-      if Result is TSysTypeCast then
-      begin
-        if TSysTypeCast(Result).Check(Scontext, DstDataType, SrcDataType) then
-          Exit(SrcDataType);
-      end;
-    end;
-  end;
-end;
-
 class function TASTDelphiUnit.CheckExplicit(const Scontext: TSContext; const Source, Destination: TIDType; out ExplicitOp: TIDDeclaration): Boolean;
 var
   SrcDataType: TIDType;
@@ -4097,7 +4002,7 @@ begin
     AbortWork('Expression has no members', Expression.TextPosition);
 end;
 
-class function TASTDelphiUnit.MatchExplicit2(const SContext: TSContext; const Source: TIDExpression; Destination: TIDType; out Explicit: TIDDeclaration): TIDExpression;
+class function TASTDelphiUnit.MatchExplicit(const SContext: TSContext; const Source: TIDExpression; Destination: TIDType; out Explicit: TIDDeclaration): TIDExpression;
 var
   SrcDataType: TIDType;
   DstDataType: TIDType;
@@ -5014,7 +4919,7 @@ function TASTDelphiUnit.ParseConstSection(Scope: TScope): TTokenID;
 var
   i, c: Integer;
   DataType: TIDType;
-  Item: TIDConstant;
+  LConst: TIDConstant;
   Expr: TIDExpression;
   Names: TIdentifiersPool;
 begin
@@ -5050,11 +4955,13 @@ begin
     end else begin
       // читаем значение константы
       Lexer_NextToken(Scope);
-      Result := ParseConstExpression(Scope, Expr, ExprRValue);
+      Result := ParseConstExpression(Scope, {out} Expr, ExprRValue);
       CheckEmptyExpression(Expr);
     end;
 
     CheckConstExpression(Expr);
+
+    var LConstClass := GetConstantClassByDataType(Expr.DataTypeID);
 
    // AddConstant(Expr.AsConst);
 
@@ -5066,10 +4973,11 @@ begin
     Lexer_MatchToken(Result, token_semicolon);
 
     for i := 0 to c do begin
-      Item := Expr.DeclClass.Create(Scope, Names.Items[i]) as TIDConstant;
-      Item.AssignValue(Expr.AsConst);
-      InsertToScope(Scope, Item);
-      AddConstant(Item);
+      LConst := LConstClass.Create(Scope, Names.Items[i]) as TIDConstant;
+      LConst.DataType := Expr.DataType;
+      LConst.AssignValue(Expr.AsConst);
+      InsertToScope(Scope, LConst);
+      AddConstant(LConst);
     end;
     c := 0;
     Result := Lexer_NextToken(Scope);
@@ -5530,7 +5438,7 @@ begin
     ERRORS.INCOMPLETE_STATEMENT('explicit cast');
 
   TargetType := DstExpression.AsType;
-  ResExpr := MatchExplicit2(SContext, SrcExpr, TargetType, OperatorDecl);
+  ResExpr := MatchExplicit(SContext, SrcExpr, TargetType, OperatorDecl);
   Result := Lexer_NextToken(Scope);
 
   if Assigned(ResExpr) then
@@ -6354,6 +6262,9 @@ begin
       if not Assigned(DataType) then
       begin
         DataType := EContext.Result.DataType;
+        if DataType = Sys._Untyped then
+          ERRORS.COULD_NOT_INFER_VAR_TYPE_FROM_UNTYPED(EContext.Result);
+
         for i := 0 to c do
           Vars[i].DataType := DataType
       end;
@@ -6562,6 +6473,25 @@ begin
   Result := Lexer_NextToken(Scope);
 end;
 
+function TASTDelphiUnit.GetPtrReferenceType(Decl: TIDPointer): TIDType;
+begin
+  Result := Decl.ReferenceType;
+  // if the type has been declared as forward, find the reference type
+  if not Assigned(Result) and Decl.NeedForward then
+  begin
+    var TypeDecl := FindID(Decl.Scope, Decl.ForwardID);
+    if Assigned(TypeDecl) then
+    begin
+      if TypeDecl.ItemType <> itType then
+        AbortWork(sTypeIdExpectedButFoundFmt, [Decl.ForwardID.Name], Decl.ForwardID.TextPosition);
+
+      Decl.ReferenceType := TIDType(TypeDecl);
+      Result := TIDType(TypeDecl);
+    end else
+      ERRORS.UNDECLARED_ID(Decl.ForwardID);
+  end;
+end;
+
 function TASTDelphiUnit.ParsePointerType(Scope: TScope; const ID: TIdentifier; out Decl: TIDPointer): TTokenID;
 var
   TmpID: TIdentifier;
@@ -6569,7 +6499,8 @@ var
 begin
   Lexer_ReadNextIdentifier(Scope, TmpID);
   DataType := TIDType(FindIDNoAbort(Scope, TmpID));
-  if Assigned(DataType) then
+  // use the target type if it has been declared in the same unit
+  if Assigned(DataType) and (DataType.Scope.DeclUnit = Self) then
   begin
     if DataType.ItemType <> itType then
       AbortWork(sTypeIdExpectedButFoundFmt, [TmpID.Name], Lexer.Position);
@@ -6585,6 +6516,7 @@ begin
       InsertToScope(Scope, Decl);
     end;
   end else begin
+    // if not, postpone it to first using
     Decl := TIDPointer.Create(Scope, ID);
     Decl.ForwardID := TmpID;
     Decl.NeedForward := True;
@@ -7002,11 +6934,8 @@ var
   FirstSkipCnt: Integer;
   CallConv: TCallConvention;
   ProcFlags: TProcFlags;
-  ForwardScope: TScope;
   ImportLib, ImportName: TIDDeclaration;
 begin
-  ForwardScope := Scope;
-
   VarSpace.Initialize;
   Parameters.VarSpace := addr(VarSpace);
 
@@ -7074,12 +7003,30 @@ begin
   ForwardDecl := nil;
   ForwardDeclNode := nil;
 
-  // search the procedure forward declaration
+  {search the procedure forward declaration}
+
   // first, search the declaration in the current scope only
-  ForwardDeclNode := ForwardScope.Find(ID.Name);
+  ForwardDeclNode := Scope.Find(ID.Name);
+
   // second, search the declaration in the interface section scope
-  if not Assigned(ForwardDeclNode) and (ForwardScope = ImplScope) then
+  if not Assigned(ForwardDeclNode) and (Scope = ImplScope) then
     ForwardDeclNode := IntfScope.Find(ID.Name);
+
+  // third, search in the uses units
+  if not Assigned(ForwardDeclNode) then
+  begin
+    if Scope = ImplScope then
+    begin
+      var LDecl := ImplScope.FindIDRecurcive(ID.Name);
+      if LDecl is TASTDelphiProc then
+        ForwardDecl := TASTDelphiProc(LDecl);
+    end else
+    begin
+      var LDecl := IntfScope.FindIDRecurcive(ID.Name);
+      if LDecl is TASTDelphiProc then
+        ForwardDecl := TASTDelphiProc(LDecl);
+    end;
+  end;
 
   if Assigned(ForwardDeclNode) and not Assigned(ForwardDecl) then
     ForwardDecl := TASTDelphiProc(ForwardDeclNode.Data);
@@ -7090,7 +7037,7 @@ begin
   {если найдена ранее обьявленная декларация, проверяем соответствие}
   if Assigned(ForwardDecl) then
   begin
-    if (Scope.ScopeClass = scInterface) then
+    if (Scope.ScopeClass = scInterface) and (ForwardDecl.Scope.DeclUnit = Self) then
     begin
       if not ((pfOveload in ForwardDecl.Flags) and (pfOveload in ProcFlags)) then
         ERRORS.OVERLOADED_MUST_BE_MARKED(ID);
@@ -7114,7 +7061,7 @@ begin
         if Decl.SameDeclaration(Parameters) then begin
           FwdDeclState := dsSame;
           if ((Decl.Scope = Scope) and not (pfForward in Decl.Flags)) or
-              (pfCompleted in Decl.Flags) then
+              ((pfCompleted in Decl.Flags) and (ForwardDecl.Scope.DeclUnit = Self)) then
             ERRORS.ID_REDECLARATED(ID);
           Proc := Decl;
           Break;
@@ -8462,7 +8409,7 @@ begin
       DataType := TIDAliasType(DataType).Original;
 
     while DataType.DataTypeID in [dtPointer, dtClassOf] do
-      DataType := TIDPointer(DataType).ReferenceType.ActualDataType;
+      DataType := GetPtrReferenceType(TIDPointer(DataType)).ActualDataType;
 
     if Decl.ItemType = itType then
     begin
@@ -8528,7 +8475,7 @@ begin
 //      DataType := TIDArray(DataType).ElementDataType;
 
     while DataType.DataTypeID in [dtPointer, dtClassOf] do
-      DataType := TIDPointer(DataType).ReferenceType.ActualDataType;
+      DataType := GetPtrReferenceType(TIDPointer(DataType)).ActualDataType;
 
     if Assigned(Decl.DataType.Helper) then
       SearchScope := Decl.DataType.Helper.Members
@@ -9067,7 +9014,7 @@ begin
 
     case Result of
       // значение по умолчанию
-      token_equal: Result := ParseVarDefaultValue(Scope, DataType, DefaultValue);
+      token_equal: Result := ParseVarDefaultValue(Scope, DataType, {out} DefaultValue);
       // absolute
       token_absolute: begin
         Lexer_ReadNextIdentifier(Scope, ID);
@@ -9237,7 +9184,7 @@ begin
   Result := DoParse(ArrType, Dimensions, 0, DefaultValue.AsDynArrayConst);
 end;
 
-procedure TASTDelphiUnit.ParseVector(Scope: TScope; var EContext: TEContext);
+function TASTDelphiUnit.InferTypeByVector(Scope: TScope; Vector: TIDExpressions): TIDType;
 
   function MaxType(Type1, Type2: TIDType): TIDType;
   begin
@@ -9265,13 +9212,63 @@ procedure TASTDelphiUnit.ParseVector(Scope: TScope; var EContext: TEContext);
       Result := Sys._Variant;
   end;
 
+begin
+  if Length(Vector) = 0 then
+    Exit(Sys._Void);
+
+  var IsSet := False;
+  var ItemType: TIDType := nil;
+
+  for var AIndex := 0 to Length(Vector) - 1 do
+  begin
+    var Expr := Vector[AIndex];
+
+    IsSet := IsSet or Expr.IsRangeConst or (Expr.DataTypeID = dtEnum);
+
+    if AIndex > 0 then
+      ItemType := MaxType(ItemType, Expr.DataType)
+    else
+      ItemType := Expr.DataType;
+  end;
+
+  if not Assigned(ItemType) then
+    ERRORS.COULD_NOT_INFER_DYNAMIC_ARRAY_TYPE(Vector);
+
+  if IsSet then
+  begin
+    // create or find in the cache anonymous set type
+    var ASetBaseType: TIDOrdinal;
+    if ItemType.DataTypeID = dtRange then
+      ASetBaseType := (ItemType as TIDRangeType).BaseType
+    else
+      ASetBaseType := (ItemType as TIDEnum);
+    // search in the cache first
+    var SetType := fCache.FindSet(ASetBaseType);
+    if not Assigned(SetType) then
+    begin
+      SetType := TIDSet.CreateAsAnonymous(Scope, ASetBaseType);
+      // add to types pool
+      AddType(SetType);
+      fCache.Add(SetType);
+    end;
+    Result := SetType;
+  end else begin
+    // create anonymous array type
+    var ArrType := TIDDynArray.CreateAsAnonymous(Scope);
+    ArrType.ElementDataType := ItemType;
+    // add to types pool
+    AddType(ArrType);
+    Result := ArrType;
+  end;
+end;
+
+procedure TASTDelphiUnit.ParseVector(Scope: TScope; var EContext: TEContext);
 var
   i, c, Capacity: Integer;
   InnerEContext: TEContext;
   Expr: TIDExpression;
   Token: TTokenID;
   SItems, DItems: TIDExpressions;
-  ElDt: TIDType;
   IsStatic: Boolean;
   ASTExpr: TASTExpression;
 begin
@@ -9284,7 +9281,7 @@ begin
   InitEContext(InnerEContext, SContext, ExprNested);
   while True do begin
     Lexer_NextToken(Scope);
-    Token := ParseExpression(Scope, SContext, InnerEContext, ASTExpr);
+    Token := ParseExpression(Scope, SContext, InnerEContext, {out} ASTExpr);
     Expr := InnerEContext.Result;
     if Assigned(Expr) then begin
       if Expr.Declaration.ItemType <> itConst then
@@ -9312,52 +9309,28 @@ begin
     end;
   end;
 
-  var IsSet := False;
-
-  if c > 0 then begin
-    // копирование элементов
+  var AConst: TIDConstant;
+  if c > 0 then
+  begin
+    // prepare expressions array
     SetLength(DItems, c);
     Move(SItems[0], DItems[0], SizeOf(Pointer)*c);
-    // вывод типа элемента
-    Expr := SItems[0];
-
-    IsSet := IsSet or Expr.IsRangeConst;
-
-    ElDt := Expr.DataType;
-    for i := 1 to c - 1 do begin
-      Expr := SItems[i];
-      ElDt := MaxType(ElDt, Expr.DataType);
+    // infer array type
+    var ArrayType := InferTypeByVector(Scope, DItems);
+    if ArrayType.DataTypeID = dtSet then
+    begin
+      // create anonymous set constant
+      AConst := TIDSetConstant.CreateAsAnonymous(Scope, ArrayType, DItems);
+      AddConstant(AConst);
+    end else begin
+      // create anonymous array constant
+      AConst := TIDDynArrayConstant.CreateAsAnonymous(Scope, ArrayType, DItems);
+      TIDDynArrayConstant(AConst).ArrayStatic := IsStatic;
+      if IsStatic then
+        AddConstant(AConst);
     end;
   end else
-    ElDt := Sys._Variant;
-
-  var AConst: TIDConstant;
-  if IsSet then begin
-    // search in the cache first
-    var SetType := fCache.FindSet(TIDRangeType(ElDt).BaseType);
-    if not Assigned(SetType) then
-    begin
-      SetType := TIDSet.CreateAsAnonymous(Scope, TIDRangeType(ElDt).BaseType);
-      // add to types pool
-      AddType(SetType);
-      fCache.Add(SetType);
-    end;
-    // create anonymous set constant
-    AConst := TIDSetConstant.CreateAsAnonymous(Scope, SetType, DItems);
-    AConst.DisplayName;
-    AddConstant(AConst);
-  end else begin
-    // create anonymous array type
-    var ArrType := TIDDynArray.CreateAsAnonymous(Scope);
-    ArrType.ElementDataType := Sys._Untyped;
-    // add to types pool
-    AddType(ArrType);
-    // create anonymous array constant
-    AConst := TIDDynArrayConstant.CreateAsAnonymous(Scope, ArrType, DItems);
-    TIDDynArrayConstant(AConst).ArrayStatic := IsStatic;
-    if IsStatic then
-      AddConstant(AConst);
-  end;
+    AConst := Sys._EmptyArrayConstant;
 
   Expr := TIDExpression.Create(AConst, Lexer.Position);
   // заталкиваем массив в стек

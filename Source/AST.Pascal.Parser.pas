@@ -170,7 +170,7 @@ begin
   fSysUnit := (Project as IASTPascalProject).SysUnit;
 
   // add system unit implicitly
-  if Assigned(fSysUnit) then
+  if Assigned(fSysUnit) and (Self <> fSysUnit) then
     fIntfImportedUnits.AddObject('system', fSysUnit);
 end;
 
@@ -186,12 +186,17 @@ begin
   fLexer := TDelphiLexer.Create(Source);
   FMessages := TCompilerMessages.Create;
   //FVisibility := vPublic;
-  FIntfScope := TScope.Create(stGlobal, @FVarSpace, @FProcSpace, nil, Self);
-  {$IFDEF DEBUG}FIntfScope.Name := 'unit_intf_scope';{$ENDIF}
-  FImplScope := TImplementationScope.Create(FIntfScope, nil);
-  {$IFDEF DEBUG}FImplScope.Name := 'unit_impl_scope';{$ENDIF}
+
+  var AUnitName := StringReplace(ExtractFileName(FileName), '.pas', '', []);
+
   FIntfImportedUnits := TUnitList.Create;
   FImplImportedUnits := TUnitList.Create;
+
+  FIntfScope := TInterfaceScope.Create(Self, @FVarSpace, @FProcSpace);
+  {$IFDEF DEBUG}FIntfScope.Name := AUnitName + '$intf_scope';{$ENDIF}
+  FImplScope := TImplementationScope.Create(FIntfScope);
+  {$IFDEF DEBUG}FImplScope.Name := AUnitName + '$impl_scope';{$ENDIF}
+
   //FBENodesPool := TBENodesPool.Create(16);
 
   // pre allocate 8 items by 8 args

@@ -11,6 +11,7 @@ object frmTestAppMain: TfrmTestAppMain
   Font.Name = 'Tahoma'
   Font.Style = []
   Position = poScreenCenter
+  OnClose = FormClose
   OnCreate = FormCreate
   TextHeight = 13
   object Splitter1: TSplitter
@@ -80,10 +81,27 @@ object frmTestAppMain: TfrmTestAppMain
       Width = 798
       Height = 149
       Anchors = [akLeft, akTop, akRight, akBottom]
+      Font.Color = clWindowText
+      Font.Height = -13
+      Font.Name = 'Consolas'
+      Font.Style = []
       Lines.Strings = (
         'Memo1')
+      ParentFont = False
       ScrollBars = ssVertical
       TabOrder = 3
+      WordWrap = False
+    end
+    object chkCompileSsystemForASTParse: TCheckBox
+      Left = 384
+      Top = 7
+      Width = 196
+      Height = 17
+      Anchors = [akTop, akRight]
+      Caption = 'Compile "system.pas" for AST Parse'
+      Checked = True
+      State = cbChecked
+      TabOrder = 4
     end
   end
   object Panel2: TPanel
@@ -162,7 +180,8 @@ object frmTestAppMain: TfrmTestAppMain
           Font.Charset = DEFAULT_CHARSET
           Font.Color = clWindowText
           Font.Height = -13
-          Font.Name = 'Courier New'
+          Font.Name = 'Consolas'
+          Font.Pitch = fpFixed
           Font.Style = []
           TabOrder = 0
           CodeFolding.GutterShapeSize = 11
@@ -189,17 +208,20 @@ object frmTestAppMain: TfrmTestAppMain
             ''
             'implementation'
             '   '
-            'var'
-            '  F1: function (A: Integer): Integer;  '
             ''
-            'function Get: Integer;'
-            'begin '
+            'procedure FreeAndNil(const [ref] Obj: TObject);'
+            'var'
+            '  Temp: TObject;'
+            'begin'
+            '  Temp := Obj;'
+            '  TObject(Pointer(@Obj)^) := nil;'
+            '  Temp.Free;'
             'end;'
             ''
             'initialization'
-            '  F1 := Get; '
             ''
-            'end.')
+            'end.'
+            '')
           FontSmoothing = fsmNone
         end
       end
@@ -251,8 +273,6 @@ object frmTestAppMain: TfrmTestAppMain
           Options = [eoAutoIndent, eoDragDropEditing, eoEnhanceEndKey, eoGroupUndo, eoRightMouseMovesCursor, eoScrollPastEol, eoShowScrollHint, eoSmartTabDelete, eoSmartTabs, eoTabsToSpaces]
           SearchEngine = SynEditSearch1
           FontSmoothing = fsmNone
-          ExplicitLeft = -2
-          ExplicitTop = 34
         end
         object Panel5: TPanel
           Left = 0
@@ -272,7 +292,6 @@ object frmTestAppMain: TfrmTestAppMain
             Caption = 'Search'
             TabOrder = 0
             OnClick = Button5Click
-            ExplicitTop = 2
           end
           object NSSearchEdit: TEdit
             AlignWithMargins = True
