@@ -84,7 +84,8 @@ type
   TIdentifier = record
     Name: string;
     TextPosition: TTextPosition;
-    class function Make(const Name: string): TIdentifier; static;
+    class function Make(const Name: string): TIdentifier; overload; static; inline;
+    class function Make(const Name: string; const ATextPosition: TTextPosition): TIdentifier; overload; static; inline;
     class function Combine(const Left, Right: TIdentifier): TIdentifier; static;
     class function Empty: TIdentifier; static;
   end;
@@ -765,6 +766,7 @@ begin
   fSource := State.Source;
   fSrcPos := State.SourcePosition;
   fRow := State.Row;
+  fLength := Length(fSource);
   fLastEnterPos := State.LastEnterPos;
   fCurrentTokenID := State.TokenID;
   fCurrentToken := State.OriginalToken;
@@ -953,6 +955,12 @@ class function TIdentifier.Empty: TIdentifier;
 begin
   Result.Name := '';
   Result.TextPosition := TTextPosition.Empty;
+end;
+
+class function TIdentifier.Make(const Name: string; const ATextPosition: TTextPosition): TIdentifier;
+begin
+  Result.Name := Name;
+  Result.TextPosition := ATextPosition;
 end;
 
 class function TIdentifier.Make(const Name: string): TIdentifier;

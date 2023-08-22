@@ -15,6 +15,8 @@ type
     fScope: TScope;
     fBlock: TASTBlock;
     fProc: TProc;
+    function GetIsLoopBody: Boolean; inline;
+    function GetIsTryBlock: Boolean; inline;
   public
     constructor Create(const Module: TASTModule; Scope: TScope; Proc: TProc; Block: TASTBlock); overload;
     constructor Create(const Module: TASTModule; Scope: TScope); overload;
@@ -26,6 +28,8 @@ type
     property Proc: TProc read fProc;
     property Block: TASTBlock read fBlock;
     property Scope: TScope read fScope;
+    property IsLoopBody: Boolean read GetIsLoopBody;
+    property IsTryBlock: Boolean read GetIsTryBlock;
   end;
 
   TExpessionPosition = AST.Delphi.Classes.TExpessionPosition;// (ExprNested, ExprLValue, ExprRValue, ExprNestedGeneric);
@@ -67,6 +71,7 @@ type
     function RPNReadExpression(Index: Integer): TIDExpression; inline;
     function RPNLastOperator: TOperatorID;
     function RPNPopExpression: TIDExpression;
+    function RPNTryPopExpression: TIDExpression;
     property RPNExprCount: Integer read fRPNExprCount;
     property RPNLastOp: TOperatorID read fRPNLastOp;
     property Result: TIDExpression read GetExpression;
@@ -237,6 +242,16 @@ begin
   Result := nil; // for prevent compiler warning
 end;
 
+function TASTEContext<TProc>.RPNTryPopExpression: TIDExpression;
+begin
+  if fRPNExprCount > 0 then
+  begin
+    Dec(fRPNExprCount);
+    Result := fRPNEArray[fRPNExprCount];
+  end else
+    Result := nil;
+end;
+
 function TASTEContext<TProc>.GetProc: TProc;
 begin
   Result := fSContext.fProc;
@@ -310,6 +325,16 @@ begin
   fScope := Scope;
   fProc := default(TProc);
   fBlock := nil;
+end;
+
+function TASTSContext<TProc>.GetIsLoopBody: Boolean;
+begin
+  Result := Block.IsLoopBody;
+end;
+
+function TASTSContext<TProc>.GetIsTryBlock: Boolean;
+begin
+  Result := Block.IsTryBlock;
 end;
 
 function TASTSContext<TProc>.MakeChild(Scope: TScope; Block: TASTBlock): TASTSContext<TProc>;

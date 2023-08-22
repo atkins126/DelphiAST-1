@@ -33,6 +33,10 @@ type
     function GetUnit(const UnitName: string): TObject; overload;
     function UsesUnit(const UnitName: string; AfterUnit: TASTModule): TASTModule;
     function GetSysUnit: TASTModule;
+    function GetStopCompileIfError: Boolean;
+    function GetCompileAll: Boolean;
+    procedure SetStopCompileIfError(const Value: Boolean);
+    procedure SetCompileAll(const Value: Boolean);
     procedure SetIncludeDebugInfo(const Value: Boolean);
     procedure SetRTTICharset(const Value: TRTTICharset);
     procedure SetTarget(const Value: string);
@@ -45,7 +49,8 @@ type
     procedure EnumIntfDeclarations(const EnumProc: TEnumASTDeclProc);
     procedure EnumAllDeclarations(const EnumProc: TEnumASTDeclProc);
     procedure DoBeforeCompileUnit(AUnit: TASTModule);
-    procedure DoFinishCompileUnit(AUnit: TASTModule);
+    procedure DoFinishCompileUnit(AUnit: TASTModule; AIntfOnly: Boolean);
+    procedure PutMessage(const Message: TCompilerMessage); overload;
     function GetMessages: ICompilerMessages;
     function GetRTTICharset: TRTTICharset;
     function RefCount: Integer;
@@ -56,6 +61,8 @@ type
     property Messages: ICompilerMessages read GetMessages;
     property RTTICharset: TRTTICharset read GetRTTICharset write SetRTTICharset;
     property IncludeDebugInfo: Boolean read GetIncludeDebugInfo write SetIncludeDebugInfo;
+    property StopCompileIfError: Boolean read GetStopCompileIfError write SetStopCompileIfError;
+    property CompileAll: Boolean read GetCompileAll write SetCompileAll;
     property UnitsCount: Integer read GetUnitsCount;
     property Units[Index: Integer]: TASTModule read GetUnit;
     property SearchPathes: TStrings read GetSearchPathes;

@@ -26,7 +26,7 @@ resourcestring
   sTypeIdExpectedButFoundFmt = 'Type identifier expected but "%s" found';
   sIdentifierRedeclaredFmt = 'Identifier redeclared: "%s"';
   sUndeclaredIdentifier = 'Undeclared identifier: "%s"';
-  sDeclDifWithPrevDecl = 'Declaration of "%s" differs from previous declaration';
+  sDeclDifWithPrevDecl = 'Declaration of "%s" differs from previous declaration:' + sLineBreak + '%s'  + sLineBreak + '%s';
   sBeginEndCountAreDiffers = 'Count of BEGIN/END clauses does not equals';
   sDevisionByZero = 'Devision by zero';
   sVariableRequired = 'Variable required';
@@ -58,14 +58,14 @@ resourcestring
   sDuplicateSpecificationFmt = 'Duplicate "%s" specification';
   sReturnValueNotAllowedForProc = 'Return value is not allowed for procedure';
   sParameterTypeRequred = 'Parameter type required';
-
+  sProcedureCannotHaveResult = 'Procedure cannot have a result type';
 
     // Assignment
   sAssignmentIsImpossible = 'The assignment is impossible, "%s" is not a variable';
   sRightExpressionHasNoResult = 'Right expression has no result';
     // parameters
   sNotEnoughActualParametersFmt = 'Not enough actual parameters for "%s"';
-  sTooManyActualParameters = 'Too many actual parameters';
+  sTooManyActualParametersFmt = 'Too many actual parameters (expected: %d, actual: %d)';
   sCannotPassConstAsVarParamFmt = 'Can not pass const as var parameter "%s"';
     // Types
   sNoOverloadOperatorForTypesFmt = 'No overload operator "%s" for types "%s" and "%s"';
@@ -87,10 +87,7 @@ resourcestring
   sUnitRecursivelyUsesItselfFmt = 'Program or unit ''%s'' recursively uses itself';
 
   // loops
-  sContinueAllowedOnlyInLoop = 'continue allowed only in loop';
   sBreakOrContinueAreAllowedOnlyInALoops = 'BREAK and CONTINUE are allowed only in a loops';
-  sLoopLevelExprected = 'Loop level exprected';
-  sLoopLevelGreaterThenPossibleFmt = 'The loop level is greater than possible, max level is %d';
   sForLoopIndexVarsMastBeSimpleIntVar = 'For loop index variable must be local integer variable';
   sKeywordToOrDowntoExpected = 'Кeyword TO or DOWNTO are expected';
   sForOrWhileLoopExecutesZeroTimes = 'FOR or WHILE-loop executes zero times - deleted';
@@ -226,12 +223,12 @@ type
     class procedure ID_REDECLARATED(Decl: TIDDeclaration); overload; static;
     class procedure ID_REDECLARATED(const ID: TIdentifier); overload; static;
     class procedure UNDECLARED_ID(const ID: TIdentifier); overload; static;
-    class procedure UNDECLARED_ID(const ID: TIdentifier; const GenericParams: TIDTypeList); overload; static;
+    class procedure UNDECLARED_ID(const ID: TIdentifier; const GenericParams: TIDTypeArray); overload; static;
     class procedure UNDECLARED_ID(const Name: string; const TextPosition: TTextPosition); overload; static;
     class procedure NOT_ENOUGH_ACTUAL_PARAMS(CallExpr: TIDExpression); static;
-    class procedure TOO_MANY_ACTUAL_PARAMS(CallExpr: TIDExpression); static;
+    class procedure TOO_MANY_ACTUAL_PARAMS(CallExpr: TIDExpression; Expected, Actual: Integer); static;
     class procedure OVERLOADED_MUST_BE_MARKED(const ID: TIdentifier); static;
-    class procedure DECL_DIFF_WITH_PREV_DECL(const ID: TIdentifier); static;
+    class procedure DECL_DIFF_WITH_PREV_DECL(const ID: TIdentifier; const ADeclSing, AImplSign: string); static;
 
     class procedure TYPE_REQUIRED(const TextPosition: TTextPosition); static;
     class procedure STRUCT_TYPE_REQUIRED(const TextPosition: TTextPosition); static;
@@ -284,6 +281,11 @@ type
     class procedure ORDINAL_OR_SET_REQUIRED(const Src: TIDExpression);
     class procedure STRING_CONST_IS_NOT_ANSI(const Src: TIDExpression);
     class procedure VAR_IS_NOT_INITIALIZED(const Variable: TIDExpression);
+
+    procedure GENERIC_INVALID_CONSTRAINT(ActualToken: TTokenID);
+
+    procedure PROCEDURE_CANNOT_HAVE_RESULT;
+    procedure BREAK_OR_CONTINUE_ALLOWED_ONLY_IN_LOOPS;
     procedure NO_METHOD_IN_BASE_CLASS(Proc: TIDProcedure);
     procedure DEFAULT_PROP_MUST_BE_ARRAY_PROP;
     procedure DEFAULT_PROP_ALREADY_EXIST(Prop: TIDProperty);
@@ -470,6 +472,11 @@ begin
   AbortWork(sExpressionMustBeBoolean, Expr.TextPosition);
 end;
 
+procedure TASTDelphiErrors.BREAK_OR_CONTINUE_ALLOWED_ONLY_IN_LOOPS;
+begin
+  AbortWork(sBreakOrContinueAreAllowedOnlyInALoops, Lexer.Position);
+end;
+
 class procedure TASTDelphiErrors.NOT_ENOUGH_ACTUAL_PARAMS(CallExpr: TIDExpression);
 begin
   AbortWork(sNotEnoughActualParametersFmt, [CallExpr.DisplayName], CallExpr.TextPosition);
@@ -480,9 +487,10 @@ begin
   AbortWork(sOverloadedMustBeMarked, [ID.Name], ID.TextPosition);
 end;
 
-class procedure TASTDelphiErrors.DECL_DIFF_WITH_PREV_DECL(const ID: TIdentifier);
+class procedure TASTDelphiErrors.DECL_DIFF_WITH_PREV_DECL(const ID: TIdentifier;
+                                                          const ADeclSing, AImplSign: string);
 begin
-  AbortWork(sDeclDifWithPrevDecl, [ID.Name], ID.TextPosition);
+  AbortWork(sDeclDifWithPrevDecl, [ID.Name, ADeclSing, AImplSign], ID.TextPosition);
 end;
 
 procedure TASTDelphiErrors.DEFAULT_PROP_ALREADY_EXIST(Prop: TIDProperty);
@@ -505,9 +513,9 @@ begin
   AbortWork(sDevisionByZero, Expr.TextPosition);
 end;
 
-class procedure TASTDelphiErrors.TOO_MANY_ACTUAL_PARAMS(CallExpr: TIDExpression);
+class procedure TASTDelphiErrors.TOO_MANY_ACTUAL_PARAMS(CallExpr: TIDExpression; Expected, Actual: Integer);
 begin
-  AbortWork(sTooManyActualParameters, CallExpr.TextPosition);
+  AbortWork(sTooManyActualParametersFmt, [Expected, Actual], CallExpr.TextPosition);
 end;
 
 procedure TASTDelphiErrors.SEMICOLON_EXPECTED;
@@ -657,7 +665,7 @@ begin
   AbortWork(sUndeclaredIdentifier, [ID.Name], ID.TextPosition);
 end;
 
-class procedure TASTDelphiErrors.UNDECLARED_ID(const ID: TIdentifier; const GenericParams: TIDTypeList);
+class procedure TASTDelphiErrors.UNDECLARED_ID(const ID: TIdentifier; const GenericParams: TIDTypeArray);
 var
   i: integer;
   s: string;
@@ -762,6 +770,11 @@ begin
   AbortWork('Setter must have declaration: %s', [DeclString], TextPosition);
 end;
 
+procedure TASTDelphiErrors.GENERIC_INVALID_CONSTRAINT(ActualToken: TTokenID);
+begin
+  AbortWork('Invalid generic constraint: %s', [Lexer.TokenLexem(ActualToken)], Lexer.Position);
+end;
+
 class procedure TASTDelphiErrors.GETTER_MUST_BE_SUCH(const Getter: TIDProcedure; const DeclString: string);
 begin
   AbortWork('Getter must have declaration: %s', [DeclString], Getter.ID.TextPosition);
@@ -810,6 +823,11 @@ end;
 class procedure TASTDelphiErrors.ORDINAL_TYPE_REQUIRED(const Pos: TTextPosition);
 begin
   AbortWork(sOrdinalTypeRequired, Pos);
+end;
+
+procedure TASTDelphiErrors.PROCEDURE_CANNOT_HAVE_RESULT;
+begin
+  AbortWork(sProcedureCannotHaveResult, Lexer.Position);
 end;
 
 class procedure TASTDelphiErrors.PROC_OR_PROCVAR_REQUIRED(const ID: TIdentifier);

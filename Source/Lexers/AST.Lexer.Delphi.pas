@@ -12,7 +12,7 @@ type
     token_unknown {= -1},           // unknown token
     token_eof {= 0},                // end of file
     token_identifier,               // some id
-    token_id_keyword,               // ambiguous token: id or keyword
+    token_id_or_keyword,            // ambiguous token: id or keyword
 
     token_numbersign,               // #
     token_semicolon,                // ;
@@ -90,6 +90,7 @@ type
     token_packed,                   // keyword: packed
     token_package,                  // keyword: package
     token_set,                      // keyword: set
+    token_sealed,                   // keyword: sealed
     token_array,                    // keyword: array
     token_if,                       // keyword: if
     token_in,                       // keyword: in
@@ -101,8 +102,9 @@ type
     token_forward,                  // keyword: forward
     token_helper,                   // keyword: helper
 
-    token_continue,                 // keyword: continue
-    token_break,                    // keyword: break
+    // made as built-in procedures
+    // token_continue,                 // keyword: continue
+    // token_break,                    // keyword: break
 
     token_not,                      // keyword: not
     token_and,                      // keyword: and
@@ -133,6 +135,7 @@ type
     token_object,                   // keyword: object
     token_operator,                 // keyword: operator
     token_try,                      // keyword: try
+    token_final,                    // keyword: final
     token_finally,                  // keyword: finally
     token_except,                   // keyword: except
     token_raise,                    // keyword: raise
@@ -337,7 +340,7 @@ begin
   inherited Create(Source);
   IdentifireID := ord(token_identifier);
   EofID := ord(token_eof);
-  AmbiguousId := ord(token_id_keyword);
+  AmbiguousId := ord(token_id_or_keyword);
   TokenCaptions.AddObject('end of file', TObject(token_eof));
   TokenCaptions.AddObject('identifier', TObject(token_identifier));
   SeparatorChars := '#$ '''#9#10#13'%^&*@()+-{}[]\/,.;:<>=~!?';
@@ -380,7 +383,7 @@ begin
   RegisterToken('@', token_address);
   RegisterToken('&', token_ampersand);
   RegisterToken(':=', token_assign);
-  RegisterToken('at', token_at, TTokenClass.AmbiguousPriorityKeyword);
+  RegisterToken('at', token_at, TTokenClass.AmbiguousPriorityIdentifier);
   RegisterToken('absolute', token_absolute, TTokenClass.AmbiguousPriorityKeyword);
   RegisterToken('abstract', token_abstract);
   RegisterToken('align', token_aling, TTokenClass.AmbiguousPriorityIdentifier);
@@ -389,19 +392,19 @@ begin
   RegisterToken('and', token_and);
   RegisterToken('array', token_array);
   RegisterToken('begin', token_begin);
-  RegisterToken('break', token_break);
+  //RegisterToken('break', token_break);
   RegisterToken('case', token_case);
   RegisterToken('cdecl', token_cdecl);
   RegisterToken('const', token_const);
   RegisterToken('constructor', token_constructor);
-  RegisterToken('continue', token_continue);
+  //RegisterToken('continue', token_continue);
   RegisterToken('class', token_class);
   RegisterToken('do', token_do);
   RegisterToken('downto', token_downto);
   RegisterToken('div', token_div);
   RegisterToken('destructor', token_destructor);
   RegisterToken('deprecated', token_deprecated);
-  RegisterToken('default', token_default, TTokenClass.Ambiguous);
+  RegisterToken('default', token_default, TTokenClass.AmbiguousPriorityIdentifier);
   RegisterToken('dynamic', token_dynamic);
   RegisterToken('delayed', token_delayed);
   RegisterToken('end', token_end);
@@ -413,6 +416,7 @@ begin
   RegisterToken('function', token_Function);
   RegisterToken('for', token_for);
   RegisterToken('forward', token_forward);
+  RegisterToken('final', token_final);
   RegisterToken('finally', token_finally);
   RegisterToken('finalization', token_finalization);
   RegisterToken('fastcall', token_fastcall);
@@ -436,11 +440,11 @@ begin
   RegisterToken('of', token_of);
   RegisterToken('on', token_on);
   RegisterToken('or', token_or);
-  RegisterToken('out', token_Out);
-  RegisterToken('override', token_Override);
-  RegisterToken('overload', token_Overload);
-  RegisterToken('operator', token_operator);
-  RegisterToken('package', token_package);
+  RegisterToken('out', token_out, TTokenClass.AmbiguousPriorityIdentifier);
+  RegisterToken('override', token_override);
+  RegisterToken('overload', token_overload);
+  RegisterToken('operator', token_operator, TTokenClass.AmbiguousPriorityKeyword);
+  RegisterToken('package', token_package, TTokenClass.AmbiguousPriorityIdentifier);
   RegisterToken('procedure', token_procedure);
   RegisterToken('program', token_program);
   RegisterToken('property', token_property);
@@ -452,13 +456,14 @@ begin
   RegisterToken('packed', token_packed);
   RegisterToken('platform', token_platform, TTokenClass.Ambiguous);
   RegisterToken('raise', token_raise);
-  RegisterToken('read', token_read);
+  RegisterToken('read', token_read, TTokenClass.AmbiguousPriorityKeyword);
   RegisterToken('record', token_record);
   RegisterToken('reference', token_reference, TTokenClass.Ambiguous);
   RegisterToken('repeat', token_repeat);
   RegisterToken('resourcestring', token_resourcestring);
   RegisterToken('reintroduce', token_reintroduce);
   RegisterToken('set', token_set);
+  RegisterToken('sealed', token_sealed);
   RegisterToken('shl', token_shl);
   RegisterToken('shr', token_shr);
   RegisterToken('static', token_static);
@@ -479,7 +484,7 @@ begin
   RegisterToken('weak', token_weak);
   RegisterToken('with', token_with);
   RegisterToken('while', token_while);
-  RegisterToken('write', token_write);
+  RegisterToken('write', token_write, TTokenClass.AmbiguousPriorityKeyword);
   RegisterToken('xor', token_xor);
   RegisterRemToken('{', '}', ord(token_openfigure), Ord(token_closefigure));
   RegisterRemToken('(*', '*)', ord(token_openround_asteriks), Ord(token_closeround_asteriks));

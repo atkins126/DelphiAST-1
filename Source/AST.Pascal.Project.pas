@@ -49,6 +49,10 @@ type
     fRTTICharset: TRTTICharset;
     fOptions: TPackageOptions;
     fTotalLinesParsed: Integer;
+    fTotalUnitsParsed: Integer;
+    fTotalUnitsIntfOnlyParsed: Integer;
+    fStopCompileIfError: Boolean;
+    fCompileAll: Boolean;
     function GetIncludeDebugInfo: Boolean;
     function OpenUnit(const UnitName: string): TASTModule;
     function RefCount: Integer;
@@ -60,11 +64,14 @@ type
     function GetOptions: TPackageOptions;
     function GetTarget: string;
     function GetDefines: TDefines;
-
     function GetSysUnit: TASTModule;
+    function GetStopCompileIfError: Boolean;
+    function GetCompileAll: Boolean;
+    procedure SetStopCompileIfError(const Value: Boolean);
     procedure SetIncludeDebugInfo(const Value: Boolean);
     procedure SetRTTICharset(const Value: TRTTICharset);
     procedure SetTarget(const Value: string);
+    procedure SetCompileAll(const Value: Boolean);
     class function StrListCompare(const Left, Right: TStrConstKey): NativeInt; static;
   protected
     fSysUnit: TASTModule;
@@ -75,7 +82,7 @@ type
     function GetNativeIntSize: Integer; override;
     procedure InitSystemUnit; virtual;
     procedure DoBeforeCompileUnit(AUnit: TASTModule); virtual;
-    procedure DoFinishCompileUnit(AUnit: TASTModule); virtual;
+    procedure DoFinishCompileUnit(AUnit: TASTModule; AIntfOnly: Boolean); virtual;
   public
     constructor Create(const Name: string); override;
     destructor Destroy; override;
@@ -89,12 +96,15 @@ type
     procedure AddUnitSearchPath(const Path: string; IncludeSubDirectories: Boolean);
     procedure Clear;
     function GetTotalLinesParsed: Integer;
+    function GetTotalUnitsParsed: Integer;
+    function GetTotalUnitsIntfOnlyParsed: Integer;
     property IncludeDebugInfo: Boolean read GetIncludeDebugInfo write SetIncludeDebugInfo;
     property RTTICharset: TRTTICharset read GetRTTICharset write SetRTTICharset;
     property Units: TUnits read FUnits;
     property SysUnit: TASTModule read fSysUnit;
     property Options: TPackageOptions read GetOptions;
     property TotalLinesParsed: Integer read fTotalLinesParsed;
+    property TotalUnitsParsed: Integer read fTotalUnitsParsed;
     function GetStringConstant(const Value: string): Integer; overload;
     function GetStringConstant(const StrConst: TIDStringConstant): Integer; overload;
     function FindUnitFile(const UnitName: string): string;
@@ -120,6 +130,11 @@ begin
   Result := FOptions;
 end;
 
+function TPascalProject.GetCompileAll: Boolean;
+begin
+  Result := fCompileAll;
+end;
+
 function TPascalProject.GetDefines: TDefines;
 begin
   Result := FDefines;
@@ -131,16 +146,8 @@ begin
 end;
 
 function TPascalProject.GetMessages: ICompilerMessages;
-var
-  i: Integer;
-  Module: TPascalUnit;
 begin
-  Result := TCompilerMessages.Create;
-  Result.CopyFrom(fMessages);
-  for i := 0 to FUnits.Count - 1 do begin
-    Module := TPascalUnit(FUnits[i]);
-    Result.CopyFrom(Module.Messages);
-  end;
+  Result := fMessages;
 end;
 
 function TPascalProject.GetRTTICharset: TRTTICharset;
@@ -175,6 +182,11 @@ begin
     Data.Index := Result;
     FStrLiterals.InsertNode(Key, Data);
   end;
+end;
+
+function TPascalProject.GetStopCompileIfError: Boolean;
+begin
+  Result := fStopCompileIfError;
 end;
 
 function TPascalProject.GetStringConstant(const StrConst: TIDStringConstant): Integer;
@@ -214,6 +226,16 @@ end;
 function TPascalProject.GetTotalLinesParsed: Integer;
 begin
   Result := fTotalLinesParsed;
+end;
+
+function TPascalProject.GetTotalUnitsIntfOnlyParsed: Integer;
+begin
+  Result := fTotalUnitsIntfOnlyParsed;
+end;
+
+function TPascalProject.GetTotalUnitsParsed: Integer;
+begin
+  Result := fTotalUnitsParsed;
 end;
 
 function TPascalProject.GetUnit(Index: Integer): TASTModule;
@@ -259,7 +281,6 @@ end;
 
 procedure TPascalProject.InitSystemUnit;
 var
-  Stream: TStringStream;
   SysFileName, SysSource: string;
 begin
   try
@@ -268,12 +289,12 @@ begin
       SysFileName := FindUnitFile('system');
       if FileExists(SysFileName) then
       begin
-        Stream := TStringStream.Create('');
+        var AList := TStringList.Create;
         try
-          StringStreamLoadFromFile(SysFileName, Stream);
-          SysSource := Stream.DataString;
+          AList.LoadFromFile(SysFileName);
+          SysSource := AList.Text;
         finally
-          Stream.Free;
+          AList.Free;
         end;
       end else
         SysSource := 'unit system; end.';
@@ -399,14 +420,31 @@ begin
 
   fTotalLinesParsed := 0;
   try
-    // compile all units
+    // compile explicit project units ("uses units" will be compiled for interface only)
     for i := 0 to FUnits.Count - 1 do
     begin
-      var UN := FUnits[i];
-      Result := TPascalUnit(UN).Compile;
+      var UN := TPascalUnit(FUnits[i]);
+      Result := UN.Compile({ACompileIntfOnly:} False);
       Inc(fTotalLinesParsed, UN.TotalLinesParsed);
       if Result = CompileFail then
         Exit;
+    end;
+
+    // compile all units (compiling implementations)
+    if fCompileAll then
+    begin
+      for i := 0 to FUnits.Count - 1 do
+      begin
+        var AUN := TPascalUnit(FUnits[i]);
+        if AUN.UnitState = UnitIntfCompiled then
+        begin
+          Dec(fTotalLinesParsed, AUN.TotalLinesParsed); // - intf lines
+          Result := AUN.Compile({ACompileIntfOnly:} False);
+          Inc(fTotalLinesParsed, AUN.TotalLinesParsed); // + all lines
+          if (Result = CompileFail) and fStopCompileIfError then
+            Exit;
+        end;
+      end;
     end;
   finally
     for i := 0 to FUnits.Count - 1 do
@@ -430,8 +468,11 @@ begin
   // do nothing
 end;
 
-procedure TPascalProject.DoFinishCompileUnit(AUnit: TASTModule);
+procedure TPascalProject.DoFinishCompileUnit(AUnit: TASTModule; AIntfOnly: Boolean);
 begin
+  Inc(fTotalUnitsParsed);
+  if AIntfOnly then
+    Inc(fTotalUnitsIntfOnlyParsed);
   // do nothing
 end;
 
@@ -568,6 +609,11 @@ begin
 
 end;
 
+procedure TPascalProject.SetCompileAll(const Value: Boolean);
+begin
+  fCompileAll := Value;
+end;
+
 procedure TPascalProject.SetIncludeDebugInfo(const Value: Boolean);
 begin
   FIncludeDebugInfo := Value;
@@ -576,6 +622,11 @@ end;
 procedure TPascalProject.SetRTTICharset(const Value: TRTTICharset);
 begin
   FRTTICharset := Value;
+end;
+
+procedure TPascalProject.SetStopCompileIfError(const Value: Boolean);
+begin
+  fStopCompileIfError := Value;
 end;
 
 procedure TPascalProject.SetTarget(const Value: string);
