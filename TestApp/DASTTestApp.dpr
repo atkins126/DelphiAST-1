@@ -1,7 +1,10 @@
 program DASTTestApp;
 
+
+{.$define FullDebugMode}
+
 uses
-  FastMM4,
+  {$IFDEF FullDebugMode} FastMM4, {$ENDIF}
   Vcl.Forms,
   TestAppMain in 'TestAppMain.pas' {frmTestAppMain},
   AVL in '..\Source\AVL.pas',
@@ -32,7 +35,11 @@ uses
   AST.Parser.ProcessStatuses in '..\Source\AST.Parser.ProcessStatuses.pas',
   AST.Delphi.Options in '..\Source\AST.Delphi.Options.pas',
   AST.Delphi.Intf in '..\Source\AST.Delphi.Intf.pas',
-  AST.Pascal.Intf in '..\Source\AST.Pascal.Intf.pas';
+  AST.Pascal.Intf in '..\Source\AST.Pascal.Intf.pas',
+  AST.Delphi.Operators.Signatures in '..\Source\AST.Delphi.Operators.Signatures.pas',
+  AST.Parser.Log in '..\Source\AST.Parser.Log.pas',
+  AST.Delphi.SysTypes in '..\Source\AST.Delphi.SysTypes.pas',
+  AST.Delphi.Declarations in '..\Source\AST.Delphi.Declarations.pas';
 
 {$R *.res}
 

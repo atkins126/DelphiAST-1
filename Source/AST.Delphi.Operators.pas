@@ -4,49 +4,59 @@ interface
 
 {$I compilers.inc}
 
-uses SysUtils, Classes;
+uses
+  System.SysUtils, System.Classes, System.Generics.Collections;
 
 type
 
   TOperatorID = (
     // not oveloaded: //////////////////
-    opNone,
-    opOpenRound,
-    opCloseRound,
-    opSubExpression,
-    opCall,
-    opDereference,
-    opPeriod,
-    opAddr,
-    opIs,
-    opAs,
+    opNone           = 0,
+    opOpenRound      = 1,
+    opCloseRound     = 2,
+    opSubExpression  = 3,
+    opCall           = 4,
+    opDereference    = 5,
+    opPeriod         = 6,
+    opAddr           = 7,
+    opIs             = 8,
+    opAs             = 9,
     // oveloaded: //////////////////////
-    opAssignment,
+    opAssignment     = 10,
     // unar:
-    opImplicit,
-    opExplicit,
-    opNegative,
-    opPositive,
-    opNot,
+    opInitialize     = 11,
+    opFinalize       = 12,
+    opImplicit       = 13,
+    opExplicit       = 14,
+    opNegative       = 15,
+    opPositive       = 16,
+    opNot            = 17,
+    opInc            = 18,
+    opDec            = 19,
+    opTrunc          = 20,
+    opRound          = 21,
     // binar:
-    opIn,
-    opEqual,
-    opNotEqual,
-    opGreater,
-    opGreaterOrEqual,
-    opLess,
-    opLessOrEqual,
-    opAdd,
-    opSubtract,
-    opMultiply,
-    opDivide,
-    opIntDiv,
-    opModDiv,
-    opShiftLeft,
-    opShiftRight,
-    opAnd,
-    opOr,
-    opXor
+    opIn             = 22,
+    opEqual          = 23,
+    opNotEqual       = 24,
+    opGreater        = 25,
+    opGreaterOrEqual = 26,
+    opLess           = 27,
+    opLessOrEqual    = 28,
+    opAdd            = 29,
+    opSubtract       = 30,
+    opMultiply       = 31,
+    opDivide         = 32,
+    opIntDiv         = 33,
+    opModDiv         = 34,
+    opShiftLeft      = 35,
+    opShiftRight     = 36,
+    opAnd            = 37,
+    opOr             = 38,
+    opXor            = 39
+//    opBitwiseAnd,
+//    opBitwiseOr,
+//    opBitwiseXor
   );
 
 
@@ -121,11 +131,17 @@ const
   {opAS}                   8,
 
   {opAssign}               0,
+  {opInitialize}           0,
+  {opFinalize}             0,
   {opImplicit}            -1,
   {opExplicit}            -1,
   {opNegative}             8,
   {opPositive}             2,
   {opLogicalNot}           8,
+  {opInc} 0,
+  {opDec} 0,
+  {opTrunc} 0,
+  {opRound} 0,
 
   {opIn}                   1,
   {opEqual}                4,
@@ -145,6 +161,9 @@ const
   {opLogicalAnd}           7,
   {opLogicalOr}            5,
   {opLogicalXor}           5
+//  {opBitwiceAnd}           7,
+//  {opBitwiceOr}            5,
+//  {opBitwiceXor}           5
   );
 
 const
@@ -163,11 +182,17 @@ const
   {opAS}                  opBinary,
 
   {opAssign}              opBinary,
+  {opInitialize}          opUnarPrefix,
+  {opFinalize}            opUnarPrefix,
   {opImplicit}            opSpecial,
   {opExplicit}            opSpecial,
   {opNegative}            opUnarPrefix,
   {opPositive}            opUnarPrefix,
   {opLogicalNot}          opUnarPrefix,
+  {opInc}                 opUnarPrefix,
+  {opDec}                 opUnarPrefix,
+  {opTrunc}               opUnarPrefix,
+  {opRound}               opUnarPrefix,
 
   {opIn}                   opBinary,
   {opEqual}                opBinary,
@@ -187,6 +212,10 @@ const
   {opLogicalAnd}           opBinary,
   {opLogicalOr}            opBinary,
   {opLogicalXor}           opBinary
+//  {opBitwiceAnd}           opBinary,
+//  {opBitwiceOr}            opBinary,
+//  {opBitwiceXor}           opBinary,
+
   );
 
 function NeedRValue(Op: TOperatorID): Boolean; inline;
@@ -212,11 +241,17 @@ const
   {opAS}              'AS',
 
   {opAssign}          'Assign',
+  {opInitialize}      'Initialize',
+  {opFinalize}        'Finalize',
   {opImplicit}        'Implicit',
   {opExplicit}        'Explicit',
   {opNegative}        'Negative',
   {opPositive}        'Positive',
   {opLogicalNot}      'Not',
+  {opInc}             '',
+  {opDec}             '',
+  {opTrunc}           '',
+  {opRound}           '',
 
   {opIn}              'In',
   {opEqual}           'Equal',
@@ -236,6 +271,11 @@ const
   {opLogicalAnd}      'And',
   {opLogicalOr}       'Or',
   {opLogicalXor}      'Xor'
+// {opBitwiceAnd}      'And',
+//  {opBitwiceOr}       'Or',
+//  {opBitwiceXor}      'Xor',
+
+
   );
 
 
@@ -253,11 +293,17 @@ const
   {opAs}              'as',
 
   {opAssign}          ':=',
+  {opInitialize}      '',
+  {opFinalize}        '',
   {opImplicit}        'Implicit',
   {opExplicit}        'Explicit',
   {opNegative}        'Negative',
   {opPositive}        'Positive',
   {opLogicalNot}      'not',
+  {opInc}             '',
+  {opDec}             '',
+  {opTrunc}           '',
+  {opRound}           '',
 
   {opIn}              'in',
   {opEqual}           '=',
@@ -277,6 +323,9 @@ const
   {opLogicalAnd}      'and',
   {opLogicalOr}       'or',
   {opLogicalXor}      'xor'
+// {opBitwiceAnd}      'and',
+//  {opBitwiceOr}       'or',
+//  {opBitwiceXor}      'xor',
   );
 
 

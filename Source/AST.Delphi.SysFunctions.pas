@@ -4,6 +4,7 @@ interface
 
 uses AST.Pascal.Parser,
      AST.Delphi.Classes,
+     AST.Delphi.Declarations,
      AST.Delphi.DataTypes,
      AST.Delphi.System,
      AST.Parser.Errors,
@@ -154,6 +155,13 @@ type
 
   {AtomicCmpExchange}
   TSF_AtomicCmpExchange = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {AtomicCmpExchange128}
+  TSF_AtomicCmpExchange128 = class(TIDSysRuntimeFunction)
   public
     function Process(var EContext: TEContext): TIDExpression; override;
     class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
@@ -455,6 +463,41 @@ type
     class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
   end;
 
+  {MulDivModInt64}
+  TSF_MulDivInt64 = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {VarArgStart}
+  TSF_VarArgStart = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {VarArgGetValue}
+  TSF_VarArgGetValue = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {VarArgCopy}
+  TSF_VarArgCopy = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
+  {VarArgEnd}
+  TSF_VarArgEnd = class(TIDSysRuntimeFunction)
+  public
+    function Process(var EContext: TEContext): TIDExpression; override;
+    class function CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction; override;
+  end;
+
 implementation
 
 uses
@@ -538,13 +581,33 @@ begin
   end;
 end;
 
-
 class function TSF_AtomicCmpExchange.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
 begin
   Result := Self.Create(Scope, 'AtomicCmpExchange', SYSUnit._NativeInt);
   Result.AddParam('Target', SYSUnit._Void, [VarInOut]);
   Result.AddParam('Comparand', SYSUnit._Void, [VarIn]);
   Result.AddParam('Succeeded', SYSUnit._Void, [VarOut]);
+end;
+
+
+{ TSF_AtomicCmpExchange128 }
+
+class function TSF_AtomicCmpExchange128.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, 'AtomicCmpExchange128', SYSUnit._Boolean);
+  Result.AddParam('Target', SYSUnit._Untyped, [VarInOut]);
+  Result.AddParam('NewValueHigh', SYSUnit._Int64, [VarIn]);
+  Result.AddParam('NewValueLow', SYSUnit._Int64, [VarIn]);
+  Result.AddParam('Comparand', SYSUnit._Untyped, [VarInOut]);
+end;
+
+function TSF_AtomicCmpExchange128.Process(var EContext: TEContext): TIDExpression;
+begin
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+  Result := SYSUnit._TrueExpression;
 end;
 
 { TSCTF_Declared }
@@ -1139,8 +1202,8 @@ end;
 class function TSF_Copy.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
 begin
   Result := Self.Create(Scope, 'Copy', SYSUnit._Void);
-  Result.AddParam('Source', SYSUnit._Pointer, [VarConst]);
-  Result.AddParam('StartChar', SYSUnit._Int32, [VarConst]);
+  Result.AddParam('S', SYSUnit._Pointer, [VarConst]);
+  Result.AddParam('Index', SYSUnit._Int32, [VarConst], SysUnit._ZeroIntExpression);
   Result.AddParam('Count ', SYSUnit._Int32, [VarConst], SysUnit.SystemDeclarations._MaxIntExpression);
 end;
 
@@ -1758,6 +1821,94 @@ begin
     Ctx.ERRORS.BREAK_OR_CONTINUE_ALLOWED_ONLY_IN_LOOPS;
 
   Ctx.SContext.Add(TASTKWContinue);
+end;
+
+{ TSF_MulDivInt64 }
+
+class function TSF_MulDivInt64.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  Result := Self.Create(Scope, 'MulDivInt64', SYSUnit._Int64);
+  Result.AddParam('AValue', SysUnit._Int64);
+  Result.AddParam('AMul', SysUnit._Int64);
+  Result.AddParam('ADiv', SysUnit._Int64);
+  Result.AddParam('Remainder', SysUnit._Int64, [VarOut]);
+end;
+
+function TSF_MulDivInt64.Process(var EContext: TEContext): TIDExpression;
+begin
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+
+  var ResVar := EContext.SContext.Proc.GetTMPVar(SYSUnit._Int64);
+  Result := TIDExpression.Create(ResVar, SYSUnit.Lexer_Position);
+end;
+
+{ TSF_VarArgStart }
+
+class function TSF_VarArgStart.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  // procedure VarArgStart(var ArgList: TVarArgList);
+  Result := Self.Create(Scope, 'VarArgStart', SYSUnit._Void);
+  Result.AddParam('ArgList', SysUnit._Untyped, [VarInOut]);
+end;
+
+function TSF_VarArgStart.Process(var EContext: TEContext): TIDExpression;
+begin
+  EContext.RPNPopExpression();
+  Result := nil;
+end;
+
+{ TSF_VarArgGetValue }
+
+class function TSF_VarArgGetValue.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  // function  VarArgGetValue(var ArgList: TVarArgList; ArgType: Type): ArgType;
+  Result := Self.Create(Scope, 'VarArgGetValue', SYSUnit._Pointer);
+  Result.AddParam('ArgList', SysUnit._Untyped, [VarInOut]);
+  Result.AddParam('ArgType', SysUnit._TypeID);
+end;
+
+function TSF_VarArgGetValue.Process(var EContext: TEContext): TIDExpression;
+begin
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+
+  var LResVar := EContext.SContext.Proc.GetTMPVar(SYSUnit._Pointer);
+  Result := TIDExpression.Create(LResVar, SYSUnit.Lexer_Position);
+end;
+
+{ TSF_VarArgCopy }
+
+class function TSF_VarArgCopy.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  // procedure VarArgCopy(var DestArgList, SrcArgList: TVarArgList);
+  Result := Self.Create(Scope, 'VarArgCopy', SYSUnit._Void);
+  Result.AddParam('DestArgList', SysUnit._Untyped, [VarInOut]);
+  Result.AddParam('SrcArgList', SysUnit._Untyped, [VarInOut]);
+end;
+
+function TSF_VarArgCopy.Process(var EContext: TEContext): TIDExpression;
+begin
+  EContext.RPNPopExpression();
+  EContext.RPNPopExpression();
+  Result := nil;
+end;
+
+{ TSF_VarArgEnd }
+
+class function TSF_VarArgEnd.CreateDecl(SysUnit: TSYSTEMUnit; Scope: TScope): TIDBuiltInFunction;
+begin
+  // procedure VarArgEnd(var ArgList: TVarArgList);
+  Result := Self.Create(Scope, 'VarArgEnd', SYSUnit._Void);
+  Result.AddParam('ArgList', SysUnit._Untyped, [VarInOut]);
+end;
+
+function TSF_VarArgEnd.Process(var EContext: TEContext): TIDExpression;
+begin
+  EContext.RPNPopExpression();
+  Result := nil;
 end;
 
 end.

@@ -39,8 +39,7 @@ type
   private
     fName: string;
     fUnits: TUnits;
-    fTargetName: string;
-    fTarget: TNPLTarget;
+    fTarget: TASTTargetClass;
     fDefines: TDefines;
     fStrLiterals: TStrLiterals;
     fIncludeDebugInfo: Boolean;
@@ -53,6 +52,7 @@ type
     fTotalUnitsIntfOnlyParsed: Integer;
     fStopCompileIfError: Boolean;
     fCompileAll: Boolean;
+    fUnitScopeNames: TStrings;
     function GetIncludeDebugInfo: Boolean;
     function OpenUnit(const UnitName: string): TASTModule;
     function RefCount: Integer;
@@ -62,16 +62,18 @@ type
     function GetUnit(const UnitName: string): TObject; overload;
     function GetSearchPathes: TStrings;
     function GetOptions: TPackageOptions;
-    function GetTarget: string;
+    function GetTarget: TASTTargetClass;
     function GetDefines: TDefines;
     function GetSysUnit: TASTModule;
     function GetStopCompileIfError: Boolean;
     function GetCompileAll: Boolean;
+    function GetUnitScopeNames: string;
     procedure SetStopCompileIfError(const Value: Boolean);
     procedure SetIncludeDebugInfo(const Value: Boolean);
     procedure SetRTTICharset(const Value: TRTTICharset);
-    procedure SetTarget(const Value: string);
+    procedure SetTarget(const Value: TASTTargetClass);
     procedure SetCompileAll(const Value: Boolean);
+    procedure SetUnitScopeNames(const Value: string);
     class function StrListCompare(const Left, Right: TStrConstKey): NativeInt; static;
   protected
     fSysUnit: TASTModule;
@@ -80,6 +82,7 @@ type
     function GetSystemUnitFileName: string; virtual;
     function GetPointerSize: Integer; override;
     function GetNativeIntSize: Integer; override;
+    function GetVariantSize: Integer;  override;
     procedure InitSystemUnit; virtual;
     procedure DoBeforeCompileUnit(AUnit: TASTModule); virtual;
     procedure DoFinishCompileUnit(AUnit: TASTModule; AIntfOnly: Boolean); virtual;
@@ -93,11 +96,11 @@ type
     procedure AddUnit(aUnit, BeforeUnit: TASTModule); overload;
     procedure AddUnit(const FileName: string); overload;
     procedure AddUnitSource(const Source: string);
-    procedure AddUnitSearchPath(const Path: string; IncludeSubDirectories: Boolean);
+    procedure AddUnitSearchPath(const APath: string; AIncludeSubDirs: Boolean);
     procedure Clear;
-    function GetTotalLinesParsed: Integer;
-    function GetTotalUnitsParsed: Integer;
-    function GetTotalUnitsIntfOnlyParsed: Integer;
+    function GetTotalLinesParsed: Integer; override;
+    function GetTotalUnitsParsed: Integer; override;
+    function GetTotalUnitsIntfOnlyParsed: Integer; override;
     property IncludeDebugInfo: Boolean read GetIncludeDebugInfo write SetIncludeDebugInfo;
     property RTTICharset: TRTTICharset read GetRTTICharset write SetRTTICharset;
     property Units: TUnits read FUnits;
@@ -107,16 +110,16 @@ type
     property TotalUnitsParsed: Integer read fTotalUnitsParsed;
     function GetStringConstant(const Value: string): Integer; overload;
     function GetStringConstant(const StrConst: TIDStringConstant): Integer; overload;
-    function FindUnitFile(const UnitName: string): string;
+    function FindUnitFile(const AUnitName: string; const AFileExt: string = '.pas'): string;
     function UsesUnit(const UnitName: string; AfterUnit: TASTModule): TASTModule;
     function GetMessages: ICompilerMessages;
     function Compile: TCompilerResult; virtual;
     function CompileInterfacesOnly: TCompilerResult; virtual;
-    procedure EnumIntfDeclarations(const EnumProc: TEnumASTDeclProc);
-    procedure EnumAllDeclarations(const EnumProc: TEnumASTDeclProc);
+    procedure EnumDeclarations(const AEnumProc: TEnumASTDeclProc; AUnitScope: TUnitScopeKind);
     procedure PutMessage(const Message: TCompilerMessage); overload;
     procedure PutMessage(MessageType: TCompilerMessageType; const MessageText: string); overload;
     procedure PutMessage(MessageType: TCompilerMessageType; const MessageText: string; const SourcePosition: TTextPosition); overload;
+    property UnitScopeNames: string read GetUnitScopeNames write SetUnitScopeNames; // semicolon delimited
   end;
 
 implementation
@@ -218,9 +221,9 @@ begin
   Result := fSysUnit;
 end;
 
-function TPascalProject.GetTarget: string;
+function TPascalProject.GetTarget: TASTTargetClass;
 begin
-  Result := FTargetName;
+  Result := fTarget;
 end;
 
 function TPascalProject.GetTotalLinesParsed: Integer;
@@ -259,6 +262,11 @@ end;
 function TPascalProject.GetUnitClass: TASTUnitClass;
 begin
   Result := TPascalUnit;
+end;
+
+function TPascalProject.GetUnitScopeNames: string;
+begin
+  Result := fUnitScopeNames.DelimitedText;
 end;
 
 function TPascalProject.GetUnitsCount: Integer;
@@ -367,7 +375,7 @@ begin
   FMessages := TCompilerMessages.Create;
   FRTTICharset := RTTICharset;
   FStrLiterals := TStrLiterals.Create(StrListCompare);
-  SetTarget('ANY');
+  fUnitScopeNames := TStringList.Create({QuoteChar:} '''', {Delimiter:} ';');
 end;
 
 procedure TPascalProject.AddUnitSource(const Source: string);
@@ -383,9 +391,9 @@ begin
   AddUnit(GetUnitClass().CreateFromFile(Self, FileName), nil);
 end;
 
-procedure TPascalProject.AddUnitSearchPath(const Path: string; IncludeSubDirectories: Boolean);
+procedure TPascalProject.AddUnitSearchPath(const APath: string; AIncludeSubDirs: Boolean);
 begin
-  FUnitSearchPathes.AddObject(Path, TObject(IncludeSubDirectories));
+  FUnitSearchPathes.AddObject(APath, TObject(AIncludeSubDirs));
 end;
 
 procedure TPascalProject.Clear;
@@ -476,28 +484,10 @@ begin
   // do nothing
 end;
 
-procedure TPascalProject.EnumAllDeclarations(const EnumProc: TEnumASTDeclProc);
-var
-  i: Integer;
-  Module: TASTModule;
+procedure TPascalProject.EnumDeclarations(const AEnumProc: TEnumASTDeclProc; AUnitScope: TUnitScopeKind);
 begin
-  for i := 0 to FUnits.Count - 1 do
-  begin
-    Module := FUnits[i];
-    Module.EnumAllDeclarations(EnumProc);
-  end;
-end;
-
-procedure TPascalProject.EnumIntfDeclarations(const EnumProc: TEnumASTDeclProc);
-var
-  i: Integer;
-  Module: TASTModule;
-begin
-  for i := 0 to FUnits.Count - 1 do
-  begin
-    Module := FUnits[i];
-    Module.EnumIntfDeclarations(EnumProc);
-  end;
+  for var LIndex := 0 to FUnits.Count - 1 do
+    FUnits[LIndex].EnumDeclarations(AEnumProc, AUnitScope);
 end;
 
 function TPascalProject.OpenUnit(const UnitName: string): TASTModule;
@@ -553,48 +543,53 @@ begin
   Result := FRefCount;
 end;
 
-function FindInSubDirs(const RootDir, UnitName: string): string;
-var
-  i: Integer;
-  SearchPath, SearchUnitName: string;
-  Dirs: TStringDynArray;
-begin
-  Dirs := TDirectory.GetDirectories(RootDir);
-  for i := 0 to Length(Dirs) - 1 do
+function TPascalProject.FindUnitFile(const AUnitName: string; const AFileExt: string): string;
+
+  function DoFindFile(const APath, AFileName: string): string;
   begin
-    SearchPath := IncludeTrailingPathDelimiter(Dirs[i]);
-    SearchUnitName := SearchPath + UnitName + '.pas';
-    if FileExists(SearchUnitName) then
-      Exit(SearchUnitName);
-
-    Result := FindInSubDirs(SearchPath, UnitName);
-    if Result <> '' then
-      Exit;
-  end;
-  Result := '';
-end;
-
-function TPascalProject.FindUnitFile(const UnitName: string): string;
-var
-  i: Integer;
-  SearchPath, SearchUnitName: string;
-
-begin
-  // поиск по файловой системе
-  for i := 0 to FUnitSearchPathes.Count - 1 do
-  begin
-    SearchPath := IncludeTrailingPathDelimiter(FUnitSearchPathes[i]);
-    SearchUnitName := SearchPath + UnitName + '.pas';
-    if FileExists(SearchUnitName) then
-      Exit(SearchUnitName);
-
-    // поиск в поддиректориях
-    if Boolean(FUnitSearchPathes.Objects[i]) then
+    Result := APath + AFileName;
+    // if not found, search using unit scope names
+    if not FileExists(Result) then
     begin
-      Result := FindInSubDirs(SearchPath, UnitName);
+      for var LUnitScope in fUnitScopeNames do
+      begin
+        Result := APath + LUnitScope + '.' + AFileName;
+        if FileExists(Result) then
+          Exit;
+      end;
+      Result := '';
+    end;
+  end;
+
+  function FindInSubDirs(const ARootDir, AUnitName: string): string;
+  begin
+    for var LDir in TDirectory.GetDirectories(ARootDir) do
+    begin
+      var LPath := IncludeTrailingPathDelimiter(LDir);
+      Result := DoFindFile(LPath, AUnitName);
+      if Result = '' then
+        Result := FindInSubDirs(LPath, AUnitName);
       if Result <> '' then
         Exit;
     end;
+    Result := '';
+  end;
+
+begin
+  var LFileName  := AUnitName + AFileExt;
+  // search using defined paths
+  for var LIndex := 0 to FUnitSearchPathes.Count - 1 do
+  begin
+    var LPath := IncludeTrailingPathDelimiter(FUnitSearchPathes[LIndex]);
+    Result := DoFindFile(LPath, LFileName);
+    // if not found search in the subdirs (if specified)
+    if Result = '' then
+      if Boolean(FUnitSearchPathes.Objects[LIndex]) then
+      begin
+        Result := FindInSubDirs(LPath, LFileName);
+        if Result <> '' then
+          Exit;
+      end;
   end;
   Result := '';
 end;
@@ -629,12 +624,14 @@ begin
   fStopCompileIfError := Value;
 end;
 
-procedure TPascalProject.SetTarget(const Value: string);
+procedure TPascalProject.SetTarget(const Value: TASTTargetClass);
 begin
-  FTargetName := Value;
-  FTarget := FindTarget(Value);
-  if not Assigned(FTarget) then
-    AbortWorkInternal('Unknwon target: ' + Value);
+  FTarget := Value;
+end;
+
+procedure TPascalProject.SetUnitScopeNames(const Value: string);
+begin
+  fUnitScopeNames.DelimitedText := Value;
 end;
 
 function TPascalProject.CompileInterfacesOnly: TCompilerResult;
@@ -659,6 +656,11 @@ end;
 function TPascalProject.GetNativeIntSize: Integer;
 begin
   Result := FTarget.NativeIntSize;
+end;
+
+function TPascalProject.GetVariantSize: Integer;
+begin
+  Result := FTarget.VariantSize;
 end;
 
 end.

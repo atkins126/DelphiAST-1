@@ -2,7 +2,13 @@ unit AST.Classes;
 
 interface
 
-uses AST.Lexer, AST.Intf, AST.Parser.Utils, AST.Parser.ProcessStatuses, System.SysUtils;
+uses
+  System.SysUtils,
+  AVL,
+  AST.Lexer,
+  AST.Intf,
+  AST.Parser.Utils,
+  AST.Parser.ProcessStatuses;
 
 type
   TASTItemTypeID = Integer;
@@ -25,6 +31,12 @@ type
     CompileSuccess,
     CompileFail,
     CompileSkip
+  );
+
+  TUnitScopeKind = (
+    scopeBoth,
+    scopeInterface,
+    scopeImplementation
   );
 
   TASTItem = class(TPooledObject)
@@ -60,6 +72,7 @@ type
     function GetUnitClass: TASTUnitClass; virtual; abstract;
     function GetPointerSize: Integer; virtual; abstract;
     function GetNativeIntSize: Integer; virtual; abstract;
+    function GetVariantSize: Integer; virtual; abstract;
     function GetTotalLinesParsed: Integer; virtual;
     function GetTotalUnitsParsed: Integer; virtual;
     function GetTotalUnitsIntfOnlyParsed: Integer; virtual;
@@ -94,9 +107,9 @@ type
 
   TASTModule = class(TInterfacedObject, IASTModule)
   private
-    fProject: IASTProject;
     fFileName: string;
   protected
+    fProject: IASTProject;
     fTotalLinesParsed: Integer;
     function GetModuleName: string; virtual;
     function GetSource: string; virtual; abstract;
@@ -106,29 +119,48 @@ type
     property Name: string read GetModuleName;
     property FileName: string read fFileName write SetFileName;
     property Project: IASTProject read fProject;
-    function GetFirstFunc: TASTDeclaration; virtual; abstract;
-    function GetFirstVar: TASTDeclaration; virtual; abstract;
-    function GetFirstType: TASTDeclaration; virtual; abstract;
-    function GetFirstConst: TASTDeclaration; virtual; abstract;
     function GetTotalLinesParsed: Integer;
     constructor Create(const Project: IASTProject; const FileName: string; const Source: string = ''); virtual;
     constructor CreateFromFile(const Project: IASTProject; const FileName: string); virtual;
-    procedure EnumIntfDeclarations(const Proc: TEnumASTDeclProc); virtual; abstract;
-    procedure EnumAllDeclarations(const Proc: TEnumASTDeclProc); virtual; abstract;
+    procedure EnumDeclarations(const AEnumProc: TEnumASTDeclProc; AUnitScope: TUnitScopeKind); virtual; abstract;
     property TotalLinesParsed: Integer read GetTotalLinesParsed;
   end;
 
-  TASTDeclaration = class(TASTItem)
+  TASTDeclaration = class(TASTItem, IASTDeclaration)
   protected
     fID: TIdentifier;
     fModule: TASTModule;
+
+    function GetID: TIdentifier;
+    function GetName: string;
+    function GetSrcPos: TTextPosition;
+    function GetModule: IASTModule;
     function GetDisplayName: string; override;
+    function Get_Obj: TObject;
+
+    procedure SetID(const AValue: TIdentifier);
+    procedure SetName(const AValue: string);
+    procedure SetSrcPos(const AValue: TTextPosition);
   public
     property ID: TIdentifier read fID write fID;
     property Name: string read fID.Name write FID.Name;
     property TextPosition: TTextPosition read FID.TextPosition write FID.TextPosition;
     property SourcePosition: TTextPosition read FID.TextPosition;
     property Module: TASTModule read fModule;
+    property DisplayName: string read GetDisplayName;
+
+    function Decl2Str(AFullName: Boolean = False): string; overload;
+
+    procedure Decl2Str(ABuilder: TStringBuilder;
+                       ANestedLevel: Integer = 0;
+                       AAppendName: Boolean = True); overload; virtual;
+  end;
+
+  TASTIDList = class(TAVLTree<string, TASTDeclaration>)
+  public
+    function InsertID(ADecl: TASTDeclaration): Boolean; inline; // true - ok, false - already exist
+    function InsertIDAndReturnIfExist(ADecl: TASTDeclaration): TASTDeclaration; inline;
+    function FindID(const AName: string): TASTDeclaration; virtual; //inline;
   end;
 
   TASTDeclarations = array of TASTDeclaration;
@@ -638,7 +670,7 @@ end;
 
 function TASTItem.GetDisplayName: string;
 begin
-  Result := '';
+  Result := '<unknown>';
 end;
 
 { TASTKWExit }
@@ -770,9 +802,67 @@ end;
 
 { TASTDeclaration }
 
+procedure TASTDeclaration.Decl2Str(ABuilder: TStringBuilder; ANestedLevel: Integer; AAppendName: Boolean);
+begin
+  ABuilder.Append(format('<unknown %s>', [ClassName]));
+end;
+
+function TASTDeclaration.Decl2Str(AFullName: Boolean): string;
+begin
+  var LBuilder := TStringBuilder.Create;
+  try
+    if AFullName then
+      LBuilder.Append(fModule.Name);
+    Decl2Str(LBuilder);
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 function TASTDeclaration.GetDisplayName: string;
 begin
   Result := fID.Name;
+end;
+
+function TASTDeclaration.GetID: TIdentifier;
+begin
+  Result := fID;
+end;
+
+function TASTDeclaration.GetModule: IASTModule;
+begin
+  Result := fModule;
+end;
+
+function TASTDeclaration.GetName: string;
+begin
+  Result := fID.Name;
+end;
+
+function TASTDeclaration.GetSrcPos: TTextPosition;
+begin
+  Result := fID.TextPosition;
+end;
+
+function TASTDeclaration.Get_Obj: TObject;
+begin
+  Result := Self;
+end;
+
+procedure TASTDeclaration.SetID(const AValue: TIdentifier);
+begin
+   fID := AValue;
+end;
+
+procedure TASTDeclaration.SetName(const AValue: string);
+begin
+  fID.Name := AValue;
+end;
+
+procedure TASTDeclaration.SetSrcPos(const AValue: TTextPosition);
+begin
+  fID.TextPosition := AValue;
 end;
 
 { TASTKWAssign }
@@ -1220,6 +1310,35 @@ end;
 procedure TASTProject.SetOnProgress(const Value: TASTProgressEvent);
 begin
   fOnProgress := Value;
+end;
+
+{ TASTIDList }
+
+function TASTIDList.FindID(const AName: string): TASTDeclaration;
+var
+  LNode: PAVLNode;
+begin
+  LNode := Find(AName);
+  if Assigned(LNode) then
+    Result := LNode.Data
+  else
+    Result := nil;
+end;
+
+function TASTIDList.InsertID(ADecl: TASTDeclaration): Boolean;
+begin
+  Result := InsertNode(ADecl.Name, ADecl) = nil;
+end;
+
+function TASTIDList.InsertIDAndReturnIfExist(ADecl: TASTDeclaration): TASTDeclaration;
+var
+  LNode: PAVLNode;
+begin
+  LNode := InsertNode(ADecl.Name, ADecl);
+  if Assigned(LNode) then
+    Result := LNode.Data
+  else
+    Result := nil;
 end;
 
 end.

@@ -99,11 +99,10 @@ type
     fIntfImportedUnits: TUnitList;
     fImplImportedUnits: TUnitList;
     fMessages: ICompilerMessages;
-    fVarSpace: TVarSpace;
-    fProcSpace: TProcSpace;
     fTypeSpace: TTypeSpace;
     fConsts: TConstSpace;              // список нетривиальных констант (массивы, структуры)
     function GetMessagesText: string;
+    function GetProject: IASTPascalProject;
   protected
     fCompiled: TCompilerResult;
     fUnitState: TUnitState;
@@ -124,7 +123,7 @@ type
     property SysUnit: TASTModule read fSysUnit;
     ////////////////////////////////////////////////////////////////////////////
     constructor Create(const Project: IASTProject; const FileName: string; const Source: string = ''); override;
-    constructor CreateFromFile(const Project: IASTProject; const FileName: string); override;
+    constructor CreateFromFile(const AProject: IASTProject; const AFileName: string); override;
     destructor Destroy; override;
     ////////////////////////////////////////////////////////////////////////////
     procedure SaveConstsToStream(Stream: TStream); // сохраняет сложные константы модуля
@@ -149,11 +148,9 @@ type
     property ImplImportedUnits: TUnitList read fImplImportedUnits;
 
     property Compiled: TCompilerResult read FCompiled;
-    property TypeSpace: TTypeSpace read FTypeSpace;
-    property VarSpace: TVarSpace read FVarSpace;
-    property ProcSpace: TProcSpace read FProcSpace;
-    property ConstSpace: TConstSpace read FConsts;
     property UnitState: TUnitState read fUnitState;
+
+    property Project: IASTPascalProject read GetProject;
   end;
 
 implementation
@@ -202,7 +199,7 @@ begin
   FIntfImportedUnits := TUnitList.Create;
   FImplImportedUnits := TUnitList.Create;
 
-  FIntfScope := TInterfaceScope.Create(Self, @FVarSpace, @FProcSpace);
+  FIntfScope := TInterfaceScope.Create(Self);
   {$IFDEF DEBUG}FIntfScope.Name := AUnitName + '$intf_scope';{$ENDIF}
   FImplScope := TImplementationScope.Create(FIntfScope);
   {$IFDEF DEBUG}FImplScope.Name := AUnitName + '$impl_scope';{$ENDIF}
@@ -220,16 +217,14 @@ begin
 //  fCondStack.OnPopError := procedure begin ERROR_INVALID_COND_DIRECTIVE() end;
 end;
 
-constructor TPascalUnit.CreateFromFile(const Project: IASTProject; const FileName: string);
-var
-  Stream: TStringStream;
+constructor TPascalUnit.CreateFromFile(const AProject: IASTProject; const AFileName: string);
 begin
-  Stream := TStringStream.Create();
+  var LStrings := TStringList.Create();
   try
-    Stream.LoadFromFile(FileName);
-    Create(Project, FileName, Stream.DataString);
+    LStrings.LoadFromFile(AFileName);
+    Create(AProject, AFileName, LStrings.Text);
   finally
-    Stream.Free;
+    LStrings.Free;
   end;
 end;
 
@@ -298,6 +293,11 @@ begin
   Result := fUnitName.Name;
   if Result = '' then
     Result := ChangeFileExt(inherited GetModuleName(), '');
+end;
+
+function TPascalUnit.GetProject: IASTPascalProject;
+begin
+  Result := FProject as IASTPascalProject;
 end;
 
 function TPascalUnit.GetPublicClass(const Name: string): TIDClass;

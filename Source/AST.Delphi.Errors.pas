@@ -6,6 +6,7 @@ uses SysUtils,
      AST.Lexer,
      AST.Lexer.Delphi,
      AST.Delphi.Operators,
+     AST.Delphi.Declarations,
      AST.Delphi.Classes;
 
 resourcestring
@@ -197,6 +198,7 @@ resourcestring
   sProcHasNoGenericParams = 'The %s "%s" has no generic parameters';
   sProcRequiresExplicitTypeArgumentFmt = 'The %s "%s" requires explicit type argument(s)';
   sTooManyActualTypeParameters = 'Too many actual type arguments';
+  sNoGenericMethodWithSuchParamsFmt = 'There is no type parameterized methods of %s that can be used with these number of type parameters';
 
   // conditional statements
   sInvalidConditionalStatement = 'Invalid conditional statement';
@@ -216,12 +218,14 @@ type
     class procedure INVALID_EXPLICIT_TYPECAST(const Src: TIDExpression; Dst: TIDType); static;
     class procedure VAR_EXPRESSION_REQUIRED(Expr: TIDExpression); static;
     class procedure VAR_OR_PROC_EXPRESSION_REQUIRED(Expr: TIDExpression); static;
+    class procedure CANNOT_INIT_MULTIPLE_VARS(AVarID: TIdentifier); static;
     class procedure CANNOT_MODIFY_FOR_LOOP_VARIABLE(Expr: TIDExpression); static;
     class procedure CANNOT_MODIFY_CONSTANT(Expr: TIDExpression); static;
     class procedure BOOLEAN_EXPRESSION_REQUIRED(Expr: TIDExpression); static;
     class procedure ARRAY_EXPRESSION_REQUIRED(Expr: TIDExpression); static;
     class procedure ID_REDECLARATED(Decl: TIDDeclaration); overload; static;
     class procedure ID_REDECLARATED(const ID: TIdentifier); overload; static;
+    class procedure THE_SAME_METHOD_EXISTS(const ID: TIdentifier); overload; static;
     class procedure UNDECLARED_ID(const ID: TIdentifier); overload; static;
     class procedure UNDECLARED_ID(const ID: TIdentifier; const GenericParams: TIDTypeArray); overload; static;
     class procedure UNDECLARED_ID(const Name: string; const TextPosition: TTextPosition); overload; static;
@@ -511,6 +515,11 @@ end;
 class procedure TASTDelphiErrors.DIVISION_BY_ZERO(Expr: TIDExpression);
 begin
   AbortWork(sDevisionByZero, Expr.TextPosition);
+end;
+
+class procedure TASTDelphiErrors.THE_SAME_METHOD_EXISTS(const ID: TIdentifier);
+begin
+  AbortWork('Method ''%s'' with identical parameters already exists', [ID.Name], ID.TextPosition);
 end;
 
 class procedure TASTDelphiErrors.TOO_MANY_ACTUAL_PARAMS(CallExpr: TIDExpression; Expected, Actual: Integer);
@@ -920,6 +929,11 @@ begin
   AbortWork('Cannot modify a temporary object', Expr.TextPosition);
 end;
 
+class procedure TASTDelphiErrors.CANNOT_INIT_MULTIPLE_VARS(AVarID: TIdentifier);
+begin
+  AbortWork('Cannot initialize multiple variables', AVarID.TextPosition);
+end;
+
 procedure TASTDelphiErrors.NEED_SPECIFY_NINDEXES(const Decl: TIDDeclaration);
 var
   ADataType: TIDArray;
@@ -972,7 +986,7 @@ end;
 
 procedure TASTDelphiErrors.NO_METHOD_IN_BASE_CLASS(Proc: TIDProcedure);
 begin
-  AbortWork('Method %s is not found in base classes', [Proc.DisplayName], Lexer.Position);
+  AbortWork('Method %s is not found in base classes', [Proc.DisplayName], Proc.ID.TextPosition);
 end;
 
 procedure TASTDelphiErrors.HINT_TEXT_AFTER_END;
