@@ -53,6 +53,7 @@ type
     fStopCompileIfError: Boolean;
     fCompileAll: Boolean;
     fUnitScopeNames: TStrings;
+    fParseSystemUnit: Boolean;
     function GetIncludeDebugInfo: Boolean;
     function OpenUnit(const UnitName: string): TASTModule;
     function RefCount: Integer;
@@ -68,12 +69,14 @@ type
     function GetStopCompileIfError: Boolean;
     function GetCompileAll: Boolean;
     function GetUnitScopeNames: string;
+    function GetParseSystemUnit: Boolean;
     procedure SetStopCompileIfError(const Value: Boolean);
     procedure SetIncludeDebugInfo(const Value: Boolean);
     procedure SetRTTICharset(const Value: TRTTICharset);
     procedure SetTarget(const Value: TASTTargetClass);
     procedure SetCompileAll(const Value: Boolean);
     procedure SetUnitScopeNames(const Value: string);
+    procedure SetParseSystemUnit(AValue: Boolean);
     class function StrListCompare(const Left, Right: TStrConstKey): NativeInt; static;
   protected
     fSysUnit: TASTModule;
@@ -94,7 +97,7 @@ type
     procedure PrepareStrLiterals;
     procedure SaveStrLiterals(Stream: TStream);
     procedure AddUnit(aUnit, BeforeUnit: TASTModule); overload;
-    procedure AddUnit(const FileName: string); overload;
+    procedure AddUnit(const AFileName: string); overload;
     procedure AddUnitSource(const Source: string);
     procedure AddUnitSearchPath(const APath: string; AIncludeSubDirs: Boolean);
     procedure Clear;
@@ -110,7 +113,7 @@ type
     property TotalUnitsParsed: Integer read fTotalUnitsParsed;
     function GetStringConstant(const Value: string): Integer; overload;
     function GetStringConstant(const StrConst: TIDStringConstant): Integer; overload;
-    function FindUnitFile(const AUnitName: string; const AFileExt: string = '.pas'): string;
+    function FindUnitFile(const AUnitName: string; const AFileExt: string = ''): string;
     function UsesUnit(const UnitName: string; AfterUnit: TASTModule): TASTModule;
     function GetMessages: ICompilerMessages;
     function Compile: TCompilerResult; virtual;
@@ -294,8 +297,8 @@ begin
   try
     if not Assigned(fSysUnit) then
     begin
-      SysFileName := FindUnitFile('system');
-      if FileExists(SysFileName) then
+      SysFileName := FindUnitFile('system.pas');
+      if FileExists(SysFileName) and fParseSystemUnit then
       begin
         var AList := TStringList.Create;
         try
@@ -356,7 +359,7 @@ begin
       Exit(FUnits[i]);
   end;
   // ищем на файловой системе
-  SUnitName := FindUnitFile(UnitName);
+  SUnitName := FindUnitFile(UnitName, '.pas');
   if SUnitName <> '' then
   begin
     Result := OpenUnit(SUnitName);
@@ -386,14 +389,19 @@ begin
   AddUnit(UN, nil);
 end;
 
-procedure TPascalProject.AddUnit(const FileName: string);
+procedure TPascalProject.AddUnit(const AFileName: string);
 begin
-  AddUnit(GetUnitClass().CreateFromFile(Self, FileName), nil);
+  var LFullFileName := FindUnitFile(AFileName);
+  if LFullFileName <> '' then
+    AddUnit(GetUnitClass().CreateFromFile(Self, LFullFileName), nil)
+  else
+    raise Exception.CreateFmt('%s file cannot be found at the specified paths', [AFileName]);
 end;
 
 procedure TPascalProject.AddUnitSearchPath(const APath: string; AIncludeSubDirs: Boolean);
 begin
-  FUnitSearchPathes.AddObject(APath, TObject(AIncludeSubDirs));
+  if FUnitSearchPathes.IndexOf(APath) < 0 then
+    FUnitSearchPathes.AddObject(APath, TObject(AIncludeSubDirs));
 end;
 
 procedure TPascalProject.Clear;
@@ -547,8 +555,8 @@ function TPascalProject.FindUnitFile(const AUnitName: string; const AFileExt: st
 
   function DoFindFile(const APath, AFileName: string): string;
   begin
-    Result := APath + AFileName;
-    // if not found, search using unit scope names
+    {TODO: improve search performance using in-memory dictionary of all accessible files}
+    Result := TPath.Combine(APath, AFileName);
     if not FileExists(Result) then
     begin
       for var LUnitScope in fUnitScopeNames do
@@ -563,6 +571,7 @@ function TPascalProject.FindUnitFile(const AUnitName: string; const AFileExt: st
 
   function FindInSubDirs(const ARootDir, AUnitName: string): string;
   begin
+    {TODO: improve search performance using in-memory dictionary of all accessible files}
     for var LDir in TDirectory.GetDirectories(ARootDir) do
     begin
       var LPath := IncludeTrailingPathDelimiter(LDir);
@@ -576,20 +585,22 @@ function TPascalProject.FindUnitFile(const AUnitName: string; const AFileExt: st
   end;
 
 begin
-  var LFileName  := AUnitName + AFileExt;
-  // search using defined paths
-  for var LIndex := 0 to FUnitSearchPathes.Count - 1 do
+  var LFileName := AUnitName;
+  if AFileExt <> '' then
+    LFileName := LFileName + AFileExt;
+
+  // search using defined paths (in reverse order)
+  for var LIndex := FUnitSearchPathes.Count - 1 downto 0 do
   begin
     var LPath := IncludeTrailingPathDelimiter(FUnitSearchPathes[LIndex]);
     Result := DoFindFile(LPath, LFileName);
     // if not found search in the subdirs (if specified)
     if Result = '' then
       if Boolean(FUnitSearchPathes.Objects[LIndex]) then
-      begin
         Result := FindInSubDirs(LPath, LFileName);
-        if Result <> '' then
-          Exit;
-      end;
+
+    if Result <> '' then
+      Exit;
   end;
   Result := '';
 end;
@@ -612,6 +623,11 @@ end;
 procedure TPascalProject.SetIncludeDebugInfo(const Value: Boolean);
 begin
   FIncludeDebugInfo := Value;
+end;
+
+procedure TPascalProject.SetParseSystemUnit(AValue: Boolean);
+begin
+  fParseSystemUnit := AValue;
 end;
 
 procedure TPascalProject.SetRTTICharset(const Value: TRTTICharset);
@@ -646,6 +662,11 @@ begin
     if Result = CompileFail then
       Exit;
   end;
+end;
+
+function TPascalProject.GetParseSystemUnit: Boolean;
+begin
+  Result := fParseSystemUnit;
 end;
 
 function TPascalProject.GetPointerSize: Integer;

@@ -52,6 +52,66 @@ object frmTestAppMain: TfrmTestAppMain
         ActivePage = tsFiles
         Align = alLeft
         TabOrder = 0
+        object tsFiles: TTabSheet
+          Caption = 'Parse Files'
+          ImageIndex = 1
+          object Panel2: TPanel
+            Left = 0
+            Top = 0
+            Width = 382
+            Height = 482
+            Align = alClient
+            BevelOuter = bvNone
+            Caption = 'Panel2'
+            TabOrder = 0
+            ExplicitHeight = 474
+            object Panel3: TPanel
+              Left = 0
+              Top = 0
+              Width = 382
+              Height = 33
+              Align = alTop
+              BevelOuter = bvNone
+              Caption = 'Panel3'
+              ShowCaption = False
+              TabOrder = 0
+              object AddFilesButton: TButton
+                Left = 0
+                Top = 2
+                Width = 75
+                Height = 25
+                Action = AddFilesAction
+                TabOrder = 0
+              end
+              object ParseFilesButton: TButton
+                Left = 162
+                Top = 2
+                Width = 75
+                Height = 25
+                Action = ParseFilesAction
+                TabOrder = 1
+              end
+              object Button1: TButton
+                Left = 81
+                Top = 2
+                Width = 75
+                Height = 25
+                Action = RemoveFilesAction
+                TabOrder = 2
+              end
+            end
+            object lbFiles: TCheckListBox
+              Left = 0
+              Top = 33
+              Width = 382
+              Height = 449
+              Align = alClient
+              ItemHeight = 13
+              TabOrder = 1
+              ExplicitHeight = 441
+            end
+          end
+        end
         object tsLogs: TTabSheet
           Caption = 'Logs'
           object LogMemo: TSynEdit
@@ -118,58 +178,6 @@ object frmTestAppMain: TfrmTestAppMain
               State = cbChecked
               TabOrder = 0
               OnClick = StopIfErrorCheckClick
-            end
-          end
-        end
-        object tsFiles: TTabSheet
-          Caption = 'Parse Files'
-          ImageIndex = 1
-          object Panel2: TPanel
-            Left = 0
-            Top = 0
-            Width = 436
-            Height = 482
-            Align = alLeft
-            BevelOuter = bvNone
-            Caption = 'Panel2'
-            TabOrder = 0
-            object Panel3: TPanel
-              Left = 0
-              Top = 0
-              Width = 436
-              Height = 33
-              Align = alTop
-              BevelOuter = bvNone
-              Caption = 'Panel3'
-              ShowCaption = False
-              TabOrder = 0
-              object LoadFilesButton: TButton
-                Left = 0
-                Top = 2
-                Width = 106
-                Height = 25
-                Caption = 'Load all files'
-                TabOrder = 0
-                OnClick = LoadFilesButtonClick
-              end
-              object ParseFilesButton: TButton
-                Left = 112
-                Top = 2
-                Width = 106
-                Height = 25
-                Caption = 'Parse selected'
-                TabOrder = 1
-                OnClick = ParseFilesButtonClick
-              end
-            end
-            object lbFiles: TCheckListBox
-              Left = 0
-              Top = 33
-              Width = 436
-              Height = 449
-              Align = alClient
-              ItemHeight = 17
-              TabOrder = 1
             end
           end
         end
@@ -263,7 +271,7 @@ object frmTestAppMain: TfrmTestAppMain
           Top = 4
           Width = 857
           Height = 502
-          ActivePage = tsNameSpace
+          ActivePage = tsSource
           Align = alClient
           TabOrder = 0
           object tsSource: TTabSheet
@@ -337,6 +345,7 @@ object frmTestAppMain: TfrmTestAppMain
                 ''
                 '')
               SelectedColor.Alpha = 0.400000005960464500
+              OnSpecialLineColors = edUnitSpecialLineColors
             end
             object Panel7: TPanel
               Left = 0
@@ -347,14 +356,22 @@ object frmTestAppMain: TfrmTestAppMain
               BevelOuter = bvNone
               ShowCaption = False
               TabOrder = 1
+              ExplicitWidth = 847
               object SaveButton: TButton
-                Left = 8
+                Left = 0
                 Top = 4
                 Width = 75
                 Height = 25
-                Caption = 'Save'
+                Action = SaveSourceAction
                 TabOrder = 0
-                OnClick = SaveButtonClick
+              end
+              object ASTParseButton: TButton
+                Left = 79
+                Top = 4
+                Width = 75
+                Height = 25
+                Action = ASTParseAction
+                TabOrder = 1
               end
             end
           end
@@ -504,16 +521,6 @@ object frmTestAppMain: TfrmTestAppMain
           Height = 13
           Caption = 'Platform'
         end
-        object ASTParseButton: TButton
-          Left = 1032
-          Top = 1
-          Width = 106
-          Height = 25
-          Anchors = [akTop, akRight]
-          Caption = 'AST Parse'
-          TabOrder = 0
-          OnClick = ASTParseButtonClick
-        end
         object ASTParseRTLButton: TButton
           Left = 1144
           Top = 1
@@ -521,7 +528,7 @@ object frmTestAppMain: TfrmTestAppMain
           Height = 25
           Anchors = [akTop, akRight]
           Caption = 'AST Parse RTL'
-          TabOrder = 1
+          TabOrder = 0
           OnClick = ASTParseRTLButtonClick
         end
         object ParseSystemCheck: TCheckBox
@@ -530,7 +537,7 @@ object frmTestAppMain: TfrmTestAppMain
           Width = 196
           Height = 17
           Caption = 'Compile "system.pas" for AST Parse'
-          TabOrder = 2
+          TabOrder = 1
           OnClick = StopIfErrorCheckClick
         end
         object cbPlatform: TComboBox
@@ -539,7 +546,7 @@ object frmTestAppMain: TfrmTestAppMain
           Width = 81
           Height = 21
           ItemIndex = 0
-          TabOrder = 3
+          TabOrder = 2
           Text = 'Win32'
           OnChange = StopIfErrorCheckClick
           Items.Strings = (
@@ -554,7 +561,7 @@ object frmTestAppMain: TfrmTestAppMain
           Caption = 'Parse Impls'
           Checked = True
           State = cbChecked
-          TabOrder = 4
+          TabOrder = 3
           OnClick = StopIfErrorCheckClick
         end
         object StopIfErrorCheck: TCheckBox
@@ -565,7 +572,7 @@ object frmTestAppMain: TfrmTestAppMain
           Caption = 'Stop compile if errors'
           Checked = True
           State = cbChecked
-          TabOrder = 5
+          TabOrder = 4
           OnClick = StopIfErrorCheckClick
         end
       end
@@ -693,5 +700,34 @@ object frmTestAppMain: TfrmTestAppMain
   object SynEditSearch1: TSynEditSearch
     Left = 131
     Top = 269
+  end
+  object ActionList1: TActionList
+    Left = 240
+    Top = 185
+    object AddFilesAction: TAction
+      Caption = 'Add Files'
+      OnExecute = AddFilesActionExecute
+    end
+    object RemoveFilesAction: TAction
+      Caption = 'Remove Files'
+      OnExecute = RemoveFilesActionExecute
+      OnUpdate = RemoveFilesActionUpdate
+    end
+    object ParseFilesAction: TAction
+      Caption = 'Parse Files '
+      OnExecute = ParseFilesActionExecute
+      OnUpdate = ParseFilesActionUpdate
+    end
+    object SaveSourceAction: TAction
+      Caption = 'Save (Ctrl+S)'
+      ShortCut = 16467
+      OnExecute = SaveSourceActionExecute
+      OnUpdate = SaveSourceActionUpdate
+    end
+    object ASTParseAction: TAction
+      Caption = 'Parse (F9)'
+      ShortCut = 120
+      OnExecute = ASTParseActionExecute
+    end
   end
 end

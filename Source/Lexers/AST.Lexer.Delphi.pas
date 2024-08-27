@@ -2,7 +2,7 @@
 
 interface
 
-{$i compilers.inc}
+{$I AST.Parser.Defines.inc}
 
 uses AST.Lexer, SysUtils, StrUtils, Types, Classes, AST.Parser.Errors;
 
@@ -94,7 +94,7 @@ type
     token_array,                    // keyword: array
     token_if,                       // keyword: if
     token_in,                       // keyword: in
-    //token_index,                    // keyword: index
+    token_index,                    // keyword: index
     token_inline,                   // keyword: inline
     token_is,                       // keyword: is
     token_then,                     // keyword: if
@@ -261,7 +261,6 @@ function TDelphiLexer.NextToken: TTokenID;
 begin
   Result := TTokenID(GetNextTokenId());
   case Result of
-    token_identifier: fOriginalToken := CurrentToken;
     token_ampersand: begin
       if not GetNextCharIsSeparator then
       begin
@@ -273,6 +272,8 @@ begin
         Result := token_identifier;
       end;
     end;
+  else
+    fOriginalToken := CurrentToken;
   end;
   if CurToken.TokenID = ord(token_quote) then
     ParseChainedString()
@@ -427,7 +428,7 @@ begin
   RegisterToken('if', token_if);
   RegisterToken('is', token_is);
   RegisterToken('in', token_in, TTokenClass.AmbiguousPriorityKeyword);
-  //RegisterToken('index', token_index);
+  RegisterToken('index', token_index, TTokenClass.AmbiguousPriorityIdentifier);
   RegisterToken('interface', token_Interface);
   RegisterToken('inherited', token_inherited);
   RegisterToken('inline', token_inline);
@@ -502,7 +503,7 @@ begin
   RegisterToken('{$ELSE', token_cond_else);
   RegisterToken('{$ELSEIF', token_cond_else_if);
   RegisterToken('{$ENDIF', token_cond_end);
-  RegisterToken('{$IFEND}', token_cond_end);
+  RegisterToken('{$IFEND', token_cond_end);
   RegisterToken('{$IFOPT', token_cond_ifopt);
   RegisterToken('{$MESSAGE', token_cond_message);
   RegisterToken('{$INCLUDE', token_cond_include);

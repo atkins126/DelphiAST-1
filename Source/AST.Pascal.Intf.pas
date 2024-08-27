@@ -30,7 +30,7 @@ type
     function GetOptions: TPackageOptions;
     function GetTarget: TASTTargetClass;
     function GetDefines: TDefines;
-    function FindUnitFile(const AUnitName: string; const AFileExt: string = '.pas'): string;
+    function FindUnitFile(const AUnitName: string; const AFileExt: string = ''): string;
     function GetUnit(const UnitName: string): TObject; overload;
     function UsesUnit(const UnitName: string; AfterUnit: TASTModule): TASTModule;
     function GetSysUnit: TASTModule;
@@ -52,6 +52,7 @@ type
     procedure DoFinishCompileUnit(AUnit: TASTModule; AIntfOnly: Boolean);
     procedure PutMessage(const Message: TCompilerMessage); overload;
     procedure SetUnitScopeNames(const Value: string);
+    procedure SetParseSystemUnit(AValue: Boolean);
     function GetMessages: ICompilerMessages;
     function GetRTTICharset: TRTTICharset;
     function RefCount: Integer;
@@ -61,6 +62,7 @@ type
     function GetNativeIntSize: Integer;
     function GetVariantSize: Integer;
     function GetUnitScopeNames: string;
+    function GetParseSystemUnit: Boolean;
     property Messages: ICompilerMessages read GetMessages;
     property RTTICharset: TRTTICharset read GetRTTICharset write SetRTTICharset;
     property IncludeDebugInfo: Boolean read GetIncludeDebugInfo write SetIncludeDebugInfo;
@@ -77,6 +79,7 @@ type
     property VariantSize: Integer read GetVariantSize;
     property SysUnit: TASTModule read GetSysUnit;
     property UnitScopeNames: string read GetUnitScopeNames write SetUnitScopeNames;
+    property ParseSystemUnit: Boolean read GetParseSystemUnit write SetParseSystemUnit;
   end;
 
 
