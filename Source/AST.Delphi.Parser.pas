@@ -31,24 +31,36 @@ uses
 // sysinit
 // GETMEM.INC
 // system.Classes
+// System.IOUtils
 // system.Rtti
 // System.JSON
 // system.Types
 // system.TypInfo
+// system.Threading
 // system.UITypes
+// System.Contnrs
 // System.SyncObjs
 // System.SysUtils
 // System.Math
+// System.Messaging
 // System.Variants
 // System.UITypes
 // Winapi.Windows
 // Winapi.ActiveX
 // Winapi.CommCtrl
+// Winapi.UrlMon
+// Winapi.PropSys
+// Winapi.MSXMLIntf
+// Winapi.ShlObj
+// Winapi.ImageHlp
 // AnsiStrings
 // Character
+// Vcl.Forms
 // Vcl.ImgList
 // Vcl.ActnList
 // Vcl.Controls
+// Vcl.StdCtrls
+// Vcl.ComCtrls
 
 type
 
@@ -67,7 +79,6 @@ type
     function FindRange(BaseType: TIDType; LoBound, HiBound: TIDExpression): TIDRangeType;
     function FindSet(BaseType: TIDType): TIDSet;
   end;
-
 
   TASTDelphiUnit = class(TPascalUnit, IASTDelphiUnit)
   type
@@ -89,7 +100,7 @@ type
     fErrors: TASTDelphiErrors;
     fSysDecls: PDelphiSystemDeclarations;
     fCache: TDeclCache;
-    fForwardPtrTypes: TList<TIDPointer>;
+    fForwardTypes: TList<TIDType>;
     property Sys: PDelphiSystemDeclarations read fSysDecls;
     procedure CheckLeftOperand(const Status: TRPNStatus);
     class procedure CheckAndCallFuncImplicit(const EContext: TEContext); overload; static;
@@ -121,7 +132,11 @@ type
     function ProcSpec_Static(Scope: TScope; var Flags: TProcFlags; var ProcType: TProcType): TTokenID;
     function ProcSpec_FastCall(Scope: TScope; var CallConvention: TCallConvention): TTokenID;
     function ProcSpec_StdCall(Scope: TScope; var CallConvention: TCallConvention): TTokenID;
+    function ProcSpec_SafeCall(Scope: TScope; var CallConvention: TCallConvention): TTokenID;
+    function ProcSpec_DispId(AScope: TScope; AStruct: TIDStructure; const AMethodID: TIdentifier): TTokenID;
     function ProcSpec_CDecl(Scope: TScope; var CallConvention: TCallConvention): TTokenID;
+    function ProcSpec_Message(Scope: TScope; var Flags: TProcFlags): TTokenID;
+
     function InstantiateGenericType(AScope: TScope; AGenericType: TIDType;
                                     const AGenericArgs: TIDExpressions): TIDType;
     function InstantiateGenericProc(AScope: TScope; AGenericProc: TIDProcedure;
@@ -255,24 +270,26 @@ type
     procedure Lexer_MatchSemicolon(const ActualToken: TTokenID); inline;
     procedure Lexer_ReadCurrIdentifier(var Identifier: TIdentifier); inline;
     procedure Lexer_ReadTokenAsID(var Identifier: TIdentifier);
-    procedure Lexer_ReadNextIdentifier(Scope: TScope; var Identifier: TIdentifier); inline;
-    procedure Lexer_ReadNextIFDEFLiteral(Scope: TScope; var Identifier: TIdentifier); inline;
+    procedure Lexer_ReadNextIdentifier(Scope: TScope; out Identifier: TIdentifier); inline;
+    procedure Lexer_ReadNextIFDEFLiteral(Scope: TScope; out Identifier: TIdentifier); inline;
     procedure Lexer_MatchParamNameIdentifier(ActualToken: TTokenID); inline;
     function Lexer_CurTokenID: TTokenID; inline;
     function Lexer_AmbiguousId: TTokenID; inline;
     function Lexer_ReadSemicolonAndToken(Scope: TScope): TTokenID; inline;
     function Lexer_NextToken(Scope: TScope): TTokenID; overload; inline;
-    function Lexer_TreatTokenAsIdentifier(AToken: TTokenID): TTokenID; inline;
+    function Lexer_NextReseredToken(Scope: TScope): TTokenID; overload; inline;
     function Lexer_Position: TTextPosition; inline;
     function Lexer_PrevPosition: TTextPosition; inline;
     function Lexer_IdentifireType: TIdentifierType; inline;
     function Lexer_TokenLexem(const TokenID: TTokenID): string; inline;
     function Lexer_Line: Integer; inline;
+    function Lexer_Original: string; inline;
     function Lexer_SkipBlock(StopToken: TTokenID): TTokenID;
     function Lexer_SkipTo(Scope: TScope; StopToken: TTokenID): TTokenID;
     function Lexer_NotEof: boolean; inline;
     function Lexer_IsCurrentIdentifier: boolean; inline;
     function Lexer_IsCurrentToken(TokenID: TTokenID): boolean; inline;
+    function Lexer_TreatTokenAsToken(AToken: TTokenID): TTokenID; inline;
 
     function ReadNewOrExistingID(Scope: TScope; out ID: TIDentifier; out Decl: TIDDeclaration): TTokenID;
 
@@ -284,6 +301,7 @@ type
     procedure Hint(const Message: string; const Params: array of const; const TextPosition: TTextPosition); overload;
     procedure Hint(const Message: string; const Params: array of const); overload;
 
+    function FindAll(Scope: TScope; const ID: TIdentifier): TIDDeclArray; overload;
     function FindID(Scope: TScope; const ID: TIdentifier): TIDDeclaration; overload; inline;
     function FindIDNoAbort(Scope: TScope; const ID: TIdentifier): TIDDeclaration; overload; inline;
     function FindIDNoAbort(Scope: TScope; const ID: string): TIDDeclaration; overload; inline;
@@ -314,9 +332,11 @@ type
     function ParseCaseRecord(Scope: TScope; Decl: TIDRecord): TTokenID;
     function ParseClassAncestorType(Scope: TScope; ClassDecl: TIDClass): TTokenID;
     function ParseClassType(Scope: TScope; GDescriptor: PGenericDescriptor; const ID: TIdentifier; out Decl: TIDClass): TTokenID;
+    function ParseVisibilityModifiers(Scope: TScope; var AVisibility: TVisibility; AIsClass: Boolean): TTokenID;
     function ParseTypeMember(Scope: TScope; Struct: TIDStructure): TTokenID;
     function ParseClassOfType(Scope: TScope; const ID: TIdentifier; out Decl: TIDClassOf): TTokenID;
-    function ParseInterfaceType(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor; const ID: TIdentifier; out Decl: TIDInterface): TTokenID;
+    function ParseInterfaceType(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor;
+                                ADispInterface: Boolean; const ID: TIdentifier; out Decl: TIDInterface): TTokenID;
     function ParseIntfGUID(Scope: TScope; Decl: TIDInterface): TTokenID;
     //=======================================================================================================================
     function ParseTypeRecord(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor; const ID: TIdentifier; out Decl: TIDType): TTokenID;
@@ -328,6 +348,8 @@ type
     function ParseTypeDeclOther(Scope: TScope; const ID: TIdentifier; out Decl: TIDType): TTokenID;
     // функция парсинга именованного типа
     function ParseNamedTypeDecl(Scope: TScope): TTokenID;
+    function ParseTypeSection(Scope: TScope): TTokenID;
+    function ParseTypeSectionInStruct(Scope: TScope): TTokenID;
     // функция парсинга указания типа (имени существующего или анонимного типа)
     function ParseTypeSpec(Scope: TScope; out DataType: TIDType): TTokenID;
     function ParseGenericTypeSpec(Scope, ASearchScope: TScope; const ID: TIdentifier; out DataType: TIDType): TTokenID; virtual;
@@ -338,8 +360,14 @@ type
                                const SContext: TSContext;
                                out Args: TIDExpressions;
                                out ACanInstantiate: Boolean): TTokenID;
+
+    function ParseGenericTypeDecl(Scope: TScope;
+                                  GDescriptor: PGenericDescriptor;
+                                  const ID: TIdentifier;
+                                  ATypeClass: TIDTypeClass): TIDType;
+
     function ParseStatements(Scope: TScope; const SContext: TSContext; IsBlock: Boolean): TTokenID; overload;
-    function GetPtrReferenceType(Decl: TIDPointer): TIDType;
+    function GetPtrReferenceType(Decl: TIDRefType): TIDType;
     procedure CheckForwardPtrDeclarations;
 
     function ParseExpression(Scope: TScope; const SContext: TSContext; var EContext: TEContext; out ASTE: TASTExpression): TTokenID; overload;
@@ -365,7 +393,7 @@ type
     function ParseIntfMethodDelegation(Scope: TScope; AClass: TIDClass; const ID: TIdentifier): TTokenID;
     function ParseProcName(AScope: TScope;
                            AProcType: TProcType;
-                           out AName: TIdentifier;
+                           out AID: TIdentifier;
                            var AStruct: TIDStructure;
                            out AProcScope: TProcScope;
                            out AGenericParams: TIDTypeArray): TTokenID;
@@ -388,11 +416,15 @@ type
     function ParseGoToStatement(Scope: TScope; const SContext: TSContext): TTokenID;
     function ParseASMStatement(Scope: TScope; const SContext: TSContext): TTokenID;
     function ParseProperty(Scope: TScope; Struct: TIDStructure): TTokenID;
+    function ParsePropertyGetter(Scope: TScope; AProp: TIDProperty): TTokenID;
+    function ParsePropertySetter(Scope: TScope; AProp: TIDProperty): TTokenID;
+    function ParsePropertyStored(Scope: TScope; AProp: TIDProperty): TTokenID;
     function ParseVarDefaultValue(Scope: TScope; DataType: TIDType; out DefaultValue: TIDExpression): TTokenID;
     function ParseVarStaticArrayDefaultValue(Scope: TScope; ArrType: TIDArray; out DefaultValue: TIDExpression): TTokenID;
     function ParseVarRecordDefaultValue(Scope: TScope; Struct: TIDStructure; out DefaultValue: TIDExpression): TTokenID;
     function ParseRecordInitValue(Scope: TRecordInitScope; var FirstField: TIDExpression): TTokenID;
     function ParseConstSection(Scope: TScope; AInlineConst: Boolean = False): TTokenID;
+    function ParseConstSectionInStruct(Scope: TScope): TTokenID;
     function ParseVarSection(Scope: TScope; Visibility: TVisibility; IsWeak: Boolean = False): TTokenID;
     function ParseFieldsSection(Scope: TScope; Visibility: TVisibility; Struct: TIDStructure; IsClass: Boolean): TTokenID;
     function ParseFieldsInCaseRecord(Scope: TScope; Visibility: TVisibility; ARecord: TIDRecord): TTokenID;
@@ -401,7 +433,6 @@ type
     function ParseAnonymousProc(Scope: TScope; var EContext: TEContext; const SContext: TSContext; ProcType: TTokenID): TTokenID;
     function ParseInitSection: TTokenID;
     function ParseFinalSection: TTokenID;
-    function ParsePlatform(Scope: TScope): TTokenID;
     function ParseUnknownID(Scope: TScope; const PrevExpr: TIDExpression; ID: TIdentifier; out Decl: TIDDeclaration): TTokenID;
     function ParseDeprecated(Scope: TScope; out DeprecatedExpr: TIDExpression): TTokenID;
     function CheckAndMakeClosure(const SContext: TSContext; const ProcDecl: TIDProcedure): TIDClosure;
@@ -409,7 +440,9 @@ type
     function CheckAndParseDeprecated(Scope: TScope; CurrToken: TTokenID): TTokenID;
     function ParseAttribute(Scope: TScope): TTokenID;
     function CheckAndParseAttribute(Scope: TScope): TTokenID;
-    function CheckAndParseProcTypeCallConv(Scope: TScope; Token: TTokenID; TypeDecl: TIDType): TTokenID;
+    function CheckAndParseProcTypeCallConv(Scope: TScope; Token: TTokenID; TypeDecl: TIDProcType): TTokenID;
+    function CheckAndParsePlatform(Scope: TScope): TTokenID;
+    function CheckAndParseAbsolute(Scope: TScope; out ADecl: TIDDeclaration): TTokenID;
     function ParseAsmSpecifier: TTokenID;
     property InitProc: TIDProcedure read FInitProc;
     property FinalProc: TIDProcedure read FFinalProc;
@@ -587,7 +620,10 @@ begin
       {VAR}
       token_var: Result := ParseImmVarStatement(Scope, SContext);
       {CONST}
-      token_const: Result := ParseConstSection(Scope, {AInlineConst:} True);
+      token_const: begin
+        Lexer_NextToken(Scope);
+        Result := ParseConstSection(Scope, {AInlineConst:} True);
+      end;
       {@}
       token_address: begin
         Result := Lexer_NextToken(Scope);
@@ -595,7 +631,7 @@ begin
         Continue;
       end;
       {IDENTIFIER, OPEN ROUND}
-      token_identifier, token_id_or_keyword, token_openround:
+      token_identifier, {token_id_or_keyword, }token_openround:
       begin
         InitEContext({out} LEContext, SContext, ExprLValue);
         begin
@@ -704,13 +740,13 @@ begin
     {parse EXCEPT section}
     token_except: begin
       Result := Lexer_NextToken(Scope);
-      if Result <> token_on then
+      if Lexer_AmbiguousId <> tokenD_on then
       begin
         ExceptItem := KW.AddExceptBlock(nil);
         NewContext := SContext.MakeChild(Scope, ExceptItem.Body);
         Result := ParseStatements(Scope, NewContext, {IsBlock:} True);
       end else begin
-        while Result = token_on do
+        while Lexer_AmbiguousId = tokenD_on do
           Result := ParseExceptOnSection(Scope, KW, SContext);
         // else section  
         if Result = token_else then
@@ -755,18 +791,12 @@ begin
   if Result = token_openblock then
   begin
     {static array}
-    Decl := TIDStaticArray.Create(Scope, ID);
-    Decl.GenericDescriptor := GDescriptor;
-    if ID.Name <> '' then
-      Scope.AddType(Decl);
+    Decl := ParseGenericTypeDecl(Scope, GDescriptor, ID, TIDStaticArray);
     Result := ParseStaticArrayType(TypeScope, TIDArray(Decl));
   end else begin
     {dynamic array}
     Lexer_MatchToken(Result, token_of);
-    Decl := TIDDynArray.Create(Scope, ID);
-    Decl.GenericDescriptor := GDescriptor;
-    if ID.Name <> '' then
-      Scope.AddType(Decl);
+    Decl := ParseGenericTypeDecl(Scope, GDescriptor, ID, TIDDynArray);
     Result := ParseTypeSpec(TypeScope, DataType);
     // case: array of const
     if (DataType = nil) and (Result = token_const) then
@@ -799,7 +829,8 @@ begin
     Result := Lexer_NextToken(Scope);
   end;
 
-  case Result of
+  var LTokenID := Lexer_TreatTokenAsToken(Result);
+  case LTokenID of
     /////////////////////////////////////////////////////////////////////////
     // type of
     /////////////////////////////////////////////////////////////////////////
@@ -825,8 +856,7 @@ begin
     /////////////////////////////////////////////////////////////////////////
     // procedural type
     /////////////////////////////////////////////////////////////////////////
-    token_id_or_keyword: if Lexer_AmbiguousId = token_reference then
-        Result := ParseProcType(Scope, ID, GDescriptor, TIDProcType(Decl));
+    tokenD_reference: Result := ParseProcType(Scope, ID, GDescriptor, TIDProcType(Decl));
     token_procedure, token_function: Result := ParseProcType(Scope, ID, GDescriptor, TIDProcType(Decl));
     /////////////////////////////////////////////////////////////////////////
     // set
@@ -870,7 +900,9 @@ begin
     /////////////////////////////////////////////////////////////////////////
     // interface
     /////////////////////////////////////////////////////////////////////////
-    token_interface: Result := ParseInterfaceType(Scope, nil, GDescriptor, ID, TIDInterface(Decl));
+    token_interface,
+    token_dispinterface:
+      Result := ParseInterfaceType(Scope, nil, GDescriptor, (LTokenID = token_dispinterface), ID, TIDInterface(Decl));
     /////////////////////////////////////////////////////////////////////////
     // other
     /////////////////////////////////////////////////////////////////////////
@@ -884,8 +916,7 @@ begin
   end;
   Result := CheckAndParseDeprecated(Scope, Result);
 
-  if Lexer_IsCurrentToken(token_platform) then
-    Result := ParsePlatform(Scope);
+  Result := CheckAndParsePlatform(Scope);
 end;
 
 function TASTDelphiUnit.ParseTypeDeclOther(Scope: TScope; const ID: TIdentifier; out Decl: TIDType): TTokenID;
@@ -947,13 +978,14 @@ begin
 
   Result := Lexer_NextToken(Scope);
   while True do begin
+    Result := ParseVisibilityModifiers(Scope, {var} Visibility, {AIsClass:} False);
     case Result of
       token_class: begin
-        Result := Lexer_NextToken(scope);
+        Result := Lexer_NextReseredToken(scope);
         case Result of
           token_procedure: Result := ParseProcedure(Decl.Members, ptClassProc, Decl);
           token_function: Result := ParseProcedure(Decl.Members, ptClassFunc, Decl);
-          token_operator: Result := ParseOperator(Decl.Members, Decl);
+          tokenD_operator: Result := ParseOperator(Decl.Members, Decl);
           token_property: Result := ParseProperty(Decl.Members, Decl);
         else
           AbortWork('PROCEDURE, FUNCTION and PROPERIES are allowed in helpers only', Lexer_Position);
@@ -962,26 +994,8 @@ begin
       token_procedure: Result := ParseProcedure(Decl.Members, ptProc, Decl);
       token_function: Result := ParseProcedure(Decl.Members, ptFunc, Decl);
       token_property: Result := ParseProperty(Decl.Members, Decl);
-      token_public: begin
-        Visibility := vPublic;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_private: begin
-        Visibility := vPrivate;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_strict: begin
-        Result := Lexer_NextToken(Scope);
-        case Result of
-          token_private: Visibility := vStrictPrivate;
-          token_protected: Visibility := vStrictProtected;
-        else
-          ERRORS.EXPECTED_TOKEN(token_private, Result);
-        end;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_const: Result := ParseConstSection(Decl.Members);
-      token_type: Result := ParseNamedTypeDecl(Decl.Members);
+      token_const: Result := ParseConstSectionInStruct(Decl.Members);
+      token_type: Result := ParseTypeSectionInStruct(Decl.Members);
       token_end: break;
     else
       AbortWork('PROCEDURE, FUNCTION and PROPERIES are allowed in helpers only', Lexer_Position);
@@ -1012,20 +1026,15 @@ begin
   end;
 end;
 
-function TASTDelphiUnit.ParseTypeRecord(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor; const ID: TIdentifier;
-  out Decl: TIDType): TTokenID;
-{var
-  TypeScope: TScope;}
+function TASTDelphiUnit.ParseTypeRecord(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor;
+                                        const ID: TIdentifier;
+                                        out Decl: TIDType): TTokenID;
 begin
-  {if Assigned(GDescriptor) then
-    TypeScope := GDescriptor.Scope
-  else
-    TypeScope := Scope;}
-
   Result := Lexer_NextToken(Scope);
-  if Result = token_helper then
+
+  if Lexer_AmbiguousId = tokenD_helper then
   begin
-    Result := ParseTypeHelper(Scope, GenericScope, GDescriptor, ID, TDlphHelper(Decl));
+    Result := ParseTypeHelper(Scope, GenericScope, GDescriptor, ID, {out} TDlphHelper(Decl));
     Exit;
   end;
 
@@ -1050,7 +1059,7 @@ function TASTDelphiUnit.ParseTypeSpec(Scope: TScope; out DataType: TIDType): TTo
 var
   Decl: TIDDeclaration;
   SearchScope: TScope;
-  LPossibleUnitName: string;
+  LCompoundIDName: string;
 begin
   Result := Lexer_NextToken(Scope);
   if (Result = token_identifier) and (Lexer_IdentifireType = itIdentifier) then
@@ -1072,23 +1081,31 @@ begin
         Decl := DataType;
       end else
       begin
-        LPossibleUnitName := AddStringSegment(LPossibleUnitName, ID.Name, '.');
+        LCompoundIDName := AddStringSegment(LCompoundIDName, ID.Name, '.');
 
         if SearchScope = nil then
-          Decl := FindIDNoAbort(Scope, ID)
+          Decl := FindIDNoAbort(Scope, LCompoundIDName)
         else begin
           Decl := SearchScope.FindMembers(ID.Name);
           // in case we have no found an id, let's assume that it can be a unit name
           if not Assigned(Decl) then
           begin
-            Decl := FindIDNoAbort(Scope, LPossibleUnitName);
+            Decl := FindIDNoAbort(Scope, LCompoundIDName);
             if Assigned(Decl) then
               SearchScope := nil;
           end;
         end;
 
         if not Assigned(Decl) then
-          ERRORS.UNDECLARED_ID(ID);
+        begin
+          if Result = token_dot then
+          begin
+            // probably it's compound unit name
+            Lexer_NextToken(Scope);
+            Continue;
+          end else
+            ERRORS.UNDECLARED_ID(ID);
+        end;
 
         // workaround for a case when param or field can be named as type
         if Decl.ItemType = itVar then
@@ -1230,6 +1247,9 @@ begin
       if (AResult <> CompileSuccess) and Package.StopCompileIfError then
         StopCompile({CompileSuccess:} False);
     end;
+
+    // add uses unit scope as joint
+    Scope.AddScope(LUnit.IntfScope);
 
     if Scope = IntfScope then
       IntfImportedUnits.AddObject(ID.Name, LUnit)
@@ -1478,7 +1498,7 @@ begin
   begin
     // read first ID
     Result := Lexer_NextToken(Scope);
-    if (Result = token_identifier) or (Result = token_id_or_keyword) then
+    if (Result = token_identifier) {or (Result = token_id_or_keyword)} then
     begin
       Lexer_ReadCurrIdentifier(ID);
 
@@ -1673,11 +1693,14 @@ end;
 
 procedure TASTDelphiUnit.PostCompileChecks;
 begin
-  for var AIndex := 0 to fForwardPtrTypes.Count - 1 do
+  for var LIndex := 0 to fForwardTypes.Count - 1 do
   begin
-    var APtrType := fForwardPtrTypes[AIndex];
-    // abort if reference type is not found
-    GetPtrReferenceType(APtrType);
+    var LDecl := fForwardTypes[LIndex];
+    // GetPtrReferenceType() aborts if reference type is not found
+    if LDecl is TIDRefType then
+      GetPtrReferenceType(LDecl as TIDRefType)
+    else
+      ERRORS.TYPE_NOT_COMPLETELY_DEFINED(LDecl);
   end;
 end;
 
@@ -2057,7 +2080,7 @@ end;
 
 destructor TASTDelphiUnit.Destroy;
 begin
-  fForwardPtrTypes.Free;
+  fForwardTypes.Free;
   fCache.Free;
   fDefines.Free;
   fOptions.Free;
@@ -2243,7 +2266,7 @@ begin
       // если аргументы - константы, производим константные вычисления
       if Left.IsConstant and Right.IsConstant then
       begin
-        Result := fCCalc.ProcessConstOperation(Left, Right, OpID);
+        Result := fCCalc.ProcessConstOperation(EContext.Scope, Left, Right, OpID);
         Exit;
       end else begin
         if Op is TSysOpBinary then
@@ -2441,7 +2464,7 @@ begin
     ERRORS.NO_OVERLOAD_OPERATOR_FOR_TYPES(opNegative, Right);
 
   if Right.ItemType = itConst then
-    Result := fCCalc.ProcessConstOperation(Right, Right, opNegative)
+    Result := fCCalc.ProcessConstOperation(EContext.Scope, Right, Right, opNegative)
   else begin
     Result := GetTMPVarExpr(EContext, OperatorItem.DataType, Right.TextPosition);
   end;
@@ -2460,7 +2483,7 @@ begin
     ERRORS.NO_OVERLOAD_OPERATOR_FOR_TYPES(opNot, Right);
 
   if Right.ItemType = itConst then
-    Result := fCCalc.ProcessConstOperation(Right, Right, opNot)
+    Result := fCCalc.ProcessConstOperation(EContext.Scope, Right, Right, opNot)
   else begin
     var WasCall := False;
     Right := CheckAndCallFuncImplicit(EContext.SContext, Right, WasCall);
@@ -2570,10 +2593,11 @@ begin
 
     Token := Lexer_NextToken(Scope);
     while true do begin
-      case Token of
+      // since this is a "root" of Delphi unit, all keywords should be treated as "reserved"
+      case Lexer_AmbiguousId of
         token_type: begin
           CheckIntfSectionMissing(Scope);
-          Token := ParseNamedTypeDecl(Scope);
+          Token := ParseTypeSection(Scope);
         end;
         token_asm: begin
           CheckIntfSectionMissing(Scope);
@@ -2604,31 +2628,28 @@ begin
         end;
         token_const: begin
           CheckIntfSectionMissing(Scope);
+          Lexer_NextToken(Scope);
           Token := ParseConstSection(Scope);
         end;
         token_resourcestring: begin
           CheckIntfSectionMissing(Scope);
+          Lexer_NextToken(Scope);
           // todo: parse resourcestring
           Token := ParseConstSection(Scope);
         end;
         token_class: begin
           CheckIntfSectionMissing(Scope);
-          Token := Lexer_NextToken(Scope);
+          Token := Lexer_NextReseredToken(Scope);
           case Token of
             token_function: Token := ParseProcedure(Scope, ptClassFunc);
             token_procedure: Token := ParseProcedure(Scope, ptClassProc);
             token_constructor: Token := ParseProcedure(Scope, ptClassConstructor);
             token_destructor: Token := ParseProcedure(Scope, ptClassDestructor);
-            token_operator: Token := ParseOperator(Scope, nil);
+            tokenD_operator: Token := ParseOperator(Scope, nil);
           else
             ERRORS.FEATURE_NOT_SUPPORTED(Lexer_TokenLexem(Token));
           end;
         end;
-//        token_weak: begin
-//          CheckIntfSectionMissing(Scope);
-//          Lexer_NextToken(Scope);
-//          Token := ParseVarSection(Scope, vLocal, True);
-//        end;
         token_var: begin
           CheckIntfSectionMissing(Scope);
           Lexer_NextToken(Scope);
@@ -2639,7 +2660,7 @@ begin
           Lexer_NextToken(Scope);
           Token := ParseVarSection(Scope, vLocal, False);
         end;
-        token_exports: begin
+        tokenD_exports: begin
           // todo:
           Token := Lexer_SkipTo(Scope, token_semicolon);
           Token := Lexer_NextToken(Scope);
@@ -2723,10 +2744,10 @@ begin
       Lexer.First;
       Token := Lexer_NextToken(Scope);
       while true do begin
-        case Token of
+        case Lexer_AmbiguousId of
           token_type: begin
             CheckIntfSectionMissing(Scope);
-            Token := ParseNamedTypeDecl(Scope);
+            Token := ParseTypeSection(Scope);
           end;
           token_uses: Token := ParseUsesSection(Scope);
           token_function: begin
@@ -2737,7 +2758,6 @@ begin
             CheckIntfSectionMissing(Scope);
             Token := ParseProcedure(Scope, ptProc);
           end;
-          //token_namespace: Token := ParseNameSpace(Scope);
           token_constructor: begin
             CheckIntfSectionMissing(Scope);
             Token := ParseProcedure(Scope, ptConstructor);
@@ -2746,17 +2766,18 @@ begin
             CheckIntfSectionMissing(Scope);
             Token := ParseProcedure(Scope, ptDestructor);
           end;
-          token_operator: begin
+          tokenD_operator: begin
             CheckIntfSectionMissing(Scope);
             Token := ParseOperator(Scope, nil);
           end;
           token_const: begin
             CheckIntfSectionMissing(Scope);
+            Lexer_NextToken(Scope);
             Token := ParseConstSection(Scope);
           end;
           token_class: begin
             CheckIntfSectionMissing(Scope);
-            Token := Lexer_NextToken(Scope);
+            Token := Lexer_NextReseredToken(Scope);
             case Token of
               token_function: Token := ParseProcedure(Scope, ptClassFunc);
               token_procedure: Token := ParseProcedure(Scope, ptClassProc);
@@ -2765,11 +2786,6 @@ begin
             else
               ERRORS.FEATURE_NOT_SUPPORTED;
             end;
-          end;
-          token_weak: begin
-            CheckIntfSectionMissing(Scope);
-            Lexer_NextToken(Scope);
-            Token := ParseVarSection(Scope, vLocal, True);
           end;
           token_var: begin
             CheckIntfSectionMissing(Scope);
@@ -2964,7 +2980,7 @@ function TASTDelphiUnit.IsConstEqual(const Left, Right: TIDExpression): Boolean;
 var
   RExpr: TIDExpression;
 begin
-  RExpr := fCCalc.ProcessConstOperation(Left, Right, opEqual);
+  RExpr := fCCalc.ProcessConstOperation(IntfScope, Left, Right, opEqual);
   Result := TIDBooleanConstant(RExpr.Declaration).Value;
 end;
 
@@ -2980,14 +2996,14 @@ begin
   RightLB := Right.Value.LBExpression;
   RightHB := Right.Value.HBExpression;
 
-  Expr := fCCalc.ProcessConstOperation(LeftLB, RightLB, opLess);
+  Expr := fCCalc.ProcessConstOperation(IntfScope, LeftLB, RightLB, opLess);
   // если Left.Low < Right.Low
   if TIDBooleanConstant(Expr.Declaration).Value then
   begin
-    Expr := fCCalc.ProcessConstOperation(LeftHB, RightLB, opGreaterOrEqual);
+    Expr := fCCalc.ProcessConstOperation(IntfScope, LeftHB, RightLB, opGreaterOrEqual);
     Result := TIDBooleanConstant(Expr.Declaration).Value;
   end else begin
-    Expr := fCCalc.ProcessConstOperation(RightHB, LeftLB, opGreaterOrEqual);
+    Expr := fCCalc.ProcessConstOperation(IntfScope, RightHB, LeftLB, opGreaterOrEqual);
     Result := TIDBooleanConstant(Expr.Declaration).Value;
   end;
 end;
@@ -2996,11 +3012,11 @@ function TASTDelphiUnit.IsConstValueInRange(Value: TIDExpression; RangeExpr: TID
 var
   Expr: TIDExpression;
 begin
-  Expr := fCCalc.ProcessConstOperation(Value, RangeExpr.Value.LBExpression, opLess);
+  Expr := fCCalc.ProcessConstOperation(IntfScope, Value, RangeExpr.Value.LBExpression, opLess);
   if TIDBooleanConstant(Expr.Declaration).Value then
     Exit(False);
 
-  Expr := fCCalc.ProcessConstOperation(Value, RangeExpr.Value.HBExpression, opLessOrEqual);
+  Expr := fCCalc.ProcessConstOperation(IntfScope, Value, RangeExpr.Value.HBExpression, opLessOrEqual);
   Result := TIDBooleanConstant(Expr.Declaration).Value;
 end;
 
@@ -3038,7 +3054,7 @@ begin
   end;
 end;
 
-procedure TASTDelphiUnit.Lexer_ReadNextIdentifier(Scope: TScope; var Identifier: TIdentifier);
+procedure TASTDelphiUnit.Lexer_ReadNextIdentifier(Scope: TScope; out Identifier: TIdentifier);
 var
   Token: TTokenID;
 begin
@@ -3065,7 +3081,7 @@ begin
   end;
 end;
 
-procedure TASTDelphiUnit.Lexer_ReadNextIFDEFLiteral(Scope: TScope; var Identifier: TIdentifier);
+procedure TASTDelphiUnit.Lexer_ReadNextIFDEFLiteral(Scope: TScope; out Identifier: TIdentifier);
 var
   Token: TTokenID;
 begin
@@ -3143,13 +3159,15 @@ begin
     Result := ParseCondStatements(Scope, Result);
 end;
 
-function TASTDelphiUnit.Lexer_TreatTokenAsIdentifier(AToken: TTokenID): TTokenID;
+function TASTDelphiUnit.Lexer_NextReseredToken(Scope: TScope): TTokenID;
 begin
-  // todo: add some attribute to the lexer
-  if AToken in [token_operator] then
-    Result := token_identifier
-  else
-    Result := AToken;
+  Lexer_NextToken(Scope);
+  Result := TTokenID(Lexer.AmbiguousTokenID);
+end;
+
+function TASTDelphiUnit.Lexer_TreatTokenAsToken(AToken: TTokenID): TTokenID;
+begin
+  Result := TTokenID(Lexer.AmbiguousTokenId);
 end;
 
 function TASTDelphiUnit.Lexer_AmbiguousId: TTokenID;
@@ -3190,6 +3208,11 @@ end;
 function TASTDelphiUnit.Lexer_NotEOF: boolean;
 begin
   Result := Lexer_CurTokenID <> token_eof;
+end;
+
+function TASTDelphiUnit.Lexer_Original: string;
+begin
+  Result := Lexer.OriginalToken;
 end;
 
 function TASTDelphiUnit.Lexer_Line: Integer;
@@ -3285,6 +3308,18 @@ end;
 procedure TASTDelphiUnit.Hint(const Message: string; const Params: array of const);
 begin
   PutMessage(cmtHint, Format(Message, Params));
+end;
+
+function TASTDelphiUnit.FindAll(Scope: TScope; const ID: TIdentifier): TIDDeclArray;
+begin
+  Result := [];
+  Scope.FindIDRecurcive(ID.Name, {var} Result);
+  if not Assigned(Result) then
+  begin
+    // for debug:
+    Scope.FindIDRecurcive(ID.Name, {var} Result);
+    ERRORS.UNDECLARED_ID(ID);
+  end;
 end;
 
 function TASTDelphiUnit.FindID(Scope: TScope; const ID: TIdentifier{; out Expression: TIDExpression}): TIDDeclaration;
@@ -4189,17 +4224,17 @@ procedure TASTDelphiUnit.CheckForwardPtrDeclarations;
 begin
   // search and assign reference type for forward pointer types
   // for searching use current scope only
-  for var AIndex := fForwardPtrTypes.Count - 1 downto 0 do
+  for var AIndex := fForwardTypes.Count - 1 downto 0 do
   begin
-    var APtrDecl := fForwardPtrTypes[AIndex];
+    var APtrDecl := fForwardTypes[AIndex];
     var ARefDecl := APtrDecl.Scope.FindID(APtrDecl.ForwardID.Name);
-    if Assigned(ARefDecl) then
+    if Assigned(ARefDecl) and (APtrDecl is TIDRefType) then
     begin
       if ARefDecl.ItemType <> itType then
         AbortWork(sTypeIdExpectedButFoundFmt, [APtrDecl.ForwardID.Name], APtrDecl.ForwardID.TextPosition);
 
-      APtrDecl.ReferenceType := TIDType(ARefDecl);
-      fForwardPtrTypes.Delete(AIndex);
+      TIDRefType(APtrDecl).ReferenceType := TIDType(ARefDecl);
+      fForwardTypes.Delete(AIndex);
     end;
   end;
 end;
@@ -4326,6 +4361,22 @@ begin
   Result := nil;
 end;
 
+function TASTDelphiUnit.CheckAndParseAbsolute(Scope: TScope; out ADecl: TIDDeclaration): TTokenID;
+begin
+  if Lexer_IsCurrentToken(tokenD_absolute) then
+  begin
+    var LID: TIdentifier;
+    Lexer_ReadNextIdentifier(Scope, LID);
+    ADecl := Scope.FindID(LID.Name);
+    if not Assigned(ADecl) then
+      ERRORS.UNDECLARED_ID(LID);
+    if ADecl.ItemType <> itVar then
+      AbortWork(sVariableRequired, Lexer_Position);
+    Result := Lexer_NextToken(Scope);
+  end else
+    Result := Lexer_CurTokenID;
+end;
+
 function TASTDelphiUnit.CheckAndParseAttribute(Scope: TScope): TTokenID;
 begin
   // todo: complete the attributes parsing
@@ -4338,8 +4389,7 @@ function TASTDelphiUnit.CheckAndParseDeprecated(Scope: TScope; CurrToken: TToken
 var
   MessageExpr: TIDExpression;
 begin
-  Result := CurrToken;
-  if CurrToken = token_deprecated then
+  if Lexer_AmbiguousId = token_deprecated then
   begin
     Result := Lexer_NextToken(Scope);
     if Result = token_identifier then
@@ -4347,31 +4397,32 @@ begin
       Result := ParseConstExpression(Scope, MessageExpr, TExpessionPosition.ExprRValue);
       CheckStringExpression(MessageExpr);
     end;
-  end;
+  end else
+    Result := CurrToken;
 end;
 
-function TASTDelphiUnit.CheckAndParseProcTypeCallConv(Scope: TScope; Token: TTokenID; TypeDecl: TIDType): TTokenID;
+function TASTDelphiUnit.CheckAndParseProcTypeCallConv(Scope: TScope; Token: TTokenID; TypeDecl: TIDProcType): TTokenID;
 begin
   if Token = token_semicolon then
     Result := Lexer_NextToken(Scope)
   else
     Result := Token;
 
-  case Result of
-    token_stdcall: begin
-      TIDProcType(TypeDecl).CallConv := ConvStdCall;
+  case Lexer_AmbiguousId of
+    tokenD_stdcall: begin
+      TypeDecl.CallConv := ConvStdCall;
       Result := Lexer_NextToken(Scope);
       if Result = token_semicolon then
         Result := Lexer_NextToken(Scope);
     end;
-    token_fastcall: begin
-      TIDProcType(TypeDecl).CallConv := ConvFastCall;
+    tokenD_fastcall: begin
+      TypeDecl.CallConv := ConvFastCall;
       Result := Lexer_NextToken(Scope);
       if Result = token_semicolon then
         Result := Lexer_NextToken(Scope);
     end;
-    token_cdecl: begin
-      TIDProcType(TypeDecl).CallConv := ConvCDecl;
+    tokenD_cdecl: begin
+      TypeDecl.CallConv := ConvCDecl;
       Result := Lexer_NextToken(Scope);
       if Result = token_semicolon then
         Result := Lexer_NextToken(Scope);
@@ -4551,7 +4602,7 @@ var
   Expr: TIDExpression;
   InnerEContext: TEContext;
   DimensionsCount: Integer;
-  DeclType: TIDType;
+  ArrType: TIDType;
   DataType: TIDType;
 begin
   ArrExpr := EContext.RPNPopExpression();
@@ -4562,7 +4613,7 @@ begin
     ArrDecl := EContext.Proc.GetTMPVar(TIDProcedure(ArrDecl).ResultType);
     ArrExpr := TIDExpression.Create(ArrDecl, ArrExpr.TextPosition);
   end;
-  DeclType := ArrExpr.DataType;
+  ArrType := ArrExpr.DataType;
   DataType := nil;
   DimensionsCount := 0;
   // indexed property case
@@ -4571,42 +4622,42 @@ begin
     DimensionsCount := TIDProperty(ArrDecl).ParamsCount;
     DataType := TIDProperty(ArrDecl).DataType;
   end else
-  if DeclType.DataTypeID = dtPointer then
+  if ArrType.DataTypeID = dtPointer then
   begin
-    var ARefType := GetPtrReferenceType(TIDPointer(DeclType));
+    var ARefType := GetPtrReferenceType(TIDPointer(ArrType));
     // auto-dereference for static array pointer (doesn't depend on POINTERMATH state)
     if ARefType.DataTypeID = dtStaticArray then
     begin
       DimensionsCount := TIDArray(ARefType).AllDimensionsCount;
       DataType := TIDArray(ARefType).ElementDataType;
     end else
-    // Delphi always treats System.PByte as POINTERMATH enabled type
-    if Options.POINTERMATH or (ARefType.DataTypeID in [dtUInt8]) then
+    // POINTERMATH can be applied to the local scope or pointer type
+    if Options.POINTERMATH or TIDPointer(ArrType).PointerMath then
     begin
       DimensionsCount := 1;
       DataType := ARefType;
     end else
       ERRORS.ARRAY_TYPE_REQUIRED(ArrExpr.Declaration.ID, Lexer_PrevPosition);
   end else
-  if DeclType.DataTypeID in [dtPAnsiChar, dtPWideChar] then
+  if ArrType.DataTypeID in [dtPAnsiChar, dtPWideChar] then
   begin
-    var ARefType := GetPtrReferenceType(TIDPointer(DeclType));
+    var ARefType := GetPtrReferenceType(TIDPointer(ArrType));
     DimensionsCount := 1;
     DataType := ARefType;
   end else
-  if DeclType.DataTypeID = dtVariant then
+  if ArrType.DataTypeID = dtVariant then
   begin
     DimensionsCount := 1;
     DataType := Sys._Variant;
   end else
-  if DeclType is TIDArray then
+  if ArrType is TIDArray then
   begin
-    DimensionsCount := TIDArray(DeclType).AllDimensionsCount;
-    DataType := TIDArray(DeclType).ElementDataType;
+    DimensionsCount := TIDArray(ArrType).AllDimensionsCount;
+    DataType := TIDArray(ArrType).ElementDataType;
   end else
-  if (DeclType is TIDStructure) and Assigned(TIDStructure(DeclType).DefaultProperty) then
+  if (ArrType is TIDStructure) and (TIDStructure(ArrType).GetDefaultProperty <> nil) then
   begin
-    ArrDecl := TIDStructure(DeclType).DefaultProperty;
+    ArrDecl := TIDStructure(ArrType).GetDefaultProperty;
     DimensionsCount := TIDProperty(ArrDecl).ParamsCount;
     DataType := TIDProperty(ArrDecl).DataType;
     Expr := TIDExpression.Create(ArrDecl);
@@ -4649,12 +4700,12 @@ begin
     // TA = array [0..N] of array [0..N] of <type>
     // TA = array [0..N] of array of <type>
 
-    if DeclType is TIDArray then
+    if ArrType is TIDArray then
     begin
       if Expr.IsConstant then
-        StaticCheckBounds(TIDArray(DeclType).Dimensions[IdxCount], Expr.AsConst);
+        StaticCheckBounds(TIDArray(ArrType).Dimensions[IdxCount], Expr.AsConst);
 
-      DataType := TIDArray(DeclType).ElementTypeByIndex[IdxCount];
+      DataType := TIDArray(ArrType).ElementTypeByIndex[IdxCount];
     end else begin
        // динамическая проверка на границы массива
        {if UseCheckBound then
@@ -4733,11 +4784,11 @@ var
   SContext: TSContext;
   ASTE: TASTExpression;
 begin
-  Lexer_ReadNextIdentifier(Scope, {var} ID);
+  Lexer_ReadNextIdentifier(Scope, ID);
   Prop := TIDProperty.Create(Scope, ID);
   Scope.AddProperty(Prop);
 
-  Result := Lexer_NextToken(Scope);
+  Result := Lexer_NextReseredToken(Scope);
 
   var LPropRedeclaration := True;
 
@@ -4762,9 +4813,43 @@ begin
 
     SContext := fUnitSContext;
 
+    if (Struct.DataTypeID = dtInterface) and (TIDInterface(Struct).IsDisp) then
+    begin
+      // readonly propery
+      if Lexer_IsCurrentToken(tokenD_readonly) then
+      begin
+        Result := Lexer_NextToken(Scope);
+      end else
+      // writeonly propery
+      if Lexer_IsCurrentToken(tokenD_writeonly) then
+      begin
+        Result := Lexer_NextToken(Scope);
+      end;
+      // dispid
+      if Lexer_IsCurrentToken(tokenD_dispid) then
+      begin
+        Result := ProcSpec_DispId(Scope, Struct, ID);
+      end;
+      // indexed default propery (note: default is ambiguous keyword)
+      if Lexer_IsCurrentToken(tokenD_default) then
+      begin
+        if Prop.ParamsCount = 0 then
+          ERRORS.DEFAULT_PROP_MUST_BE_ARRAY_PROP;
+        if not Assigned(Struct.DefaultProperty) then
+        begin
+          Struct.DefaultProperty := Prop;
+          Prop.DefaultIndexedProperty := True;
+        end else
+          ERRORS.DEFAULT_PROP_ALREADY_EXIST(Prop);
+        Lexer_ReadSemicolon(Scope);
+        Result := Lexer_NextToken(Scope);
+      end;
+      Exit;
+    end;
+
     // property index value (note: index is ambiguous keyword)
     // note: can only be after the property type
-    if Lexer_IsCurrentToken(token_index) then
+    if Lexer_IsCurrentToken(tokenD_index) then
     begin
       var LIndexValue: TIDExpression;
       Lexer_NextToken(Scope);
@@ -4772,47 +4857,20 @@ begin
       CheckEmptyExpression(LIndexValue);
       Prop.IndexValue := LIndexValue.AsConst;
       // create "index" param for the propery
+      if not Assigned(Prop.Params) then
+        Prop.Params := TParamsScope.Create(stLocal, Scope);
       var LIndexParam := TIDParam.CreateAsSystem(Prop.Scope, 'Index');
       LIndexParam.DataType := fSysDecls._Int32;
-      IndexedPropParams := IndexedPropParams + [LIndexParam];
+      Prop.Params.AddExplicitParam(LIndexParam);
     end;
 
     // getter
-    if Result = token_read then
-    begin
-      InitEContext(EContext, SContext, ExprRValue);
-      Lexer_NextToken(Scope);
-      Result := ParseExpression(Scope, SContext, EContext, ASTE);
-      Expr := EContext.Result;
-      if Expr.ItemType = itProcedure then
-      begin
-        Proc := Expr.AsProcedure;
-        DataType := Proc.ResultType;
-        if not Assigned(DataType) then
-          AbortWork(sFieldConstOrFuncRequiredForGetter, Expr.TextPosition);
-
-        if Assigned(IndexedPropParams) then
-          MatchPropGetter(Prop, Proc, IndexedPropParams);
-      end else
-        DataType := Expr.DataType;
-
-      CheckImplicitTypes(DataType, PropDataType, Expr.TextPosition);
-      Prop.Getter := Expr.Declaration;
-    end;
+    if Lexer_AmbiguousId = tokenD_read then
+      Result := ParsePropertyGetter(Scope, Prop);
 
     // setter
-    if Result = token_write then
-    begin
-      InitEContext(EContext, SContext, ExprRValue);
-      Lexer_NextToken(Scope);
-      Result := ParseExpression(Scope, SContext, EContext, ASTE);
-      Expr := EContext.Result;
-      case Expr.ItemType of
-        itConst: AbortWork(sFieldOrProcRequiredForSetter, Expr.TextPosition);
-        itProcedure: MatchPropSetter(Prop, Expr, IndexedPropParams);
-      end;
-      Prop.Setter := Expr.Declaration;
-    end;
+    if Lexer_AmbiguousId = tokenD_write then
+      Result := ParsePropertySetter(Scope, Prop);
   end;
 
   if LPropRedeclaration then
@@ -4823,13 +4881,24 @@ begin
       var LExistingProp := Struct.Ancestor.FindProperty(ID.Name);
       if not Assigned(LExistingProp) or (LExistingProp.ItemType <> itProperty) then
         ERRORS.PROPERTY_DOES_NOT_EXIST_IN_BASE_CLASS(ID);
-      Prop := LExistingProp;
+
+      Prop.Getter := LExistingProp.Getter;
+      Prop.Setter := LExistingProp.Setter;
+      Prop.DataType := LExistingProp.DataType;
     end else
       ERRORS.PROPERTY_DOES_NOT_EXIST_IN_BASE_CLASS(ID);
 
+    // getter
+    if Lexer_AmbiguousId = tokenD_read then
+      Result := ParsePropertyGetter(Scope, Prop);
+
+    // setter
+    if Lexer_AmbiguousId = tokenD_write then
+      Result := ParsePropertySetter(Scope, Prop);
+
     // property index value (note: index is ambiguous keyword)
     // note: can only be after the property name (and looks like a Delphi bug)
-    if Lexer_IsCurrentToken(token_index) then
+    if Lexer_IsCurrentToken(tokenD_index) then
     begin
       var LIndexValue: TIDExpression;
       Lexer_NextToken(Scope);
@@ -4839,46 +4908,116 @@ begin
   end;
 
   // stored propery (note: stored is ambiguous keyword)
-  if Lexer_IsCurrentToken(token_stored) then
-  begin
-    var LStoredExpr: TIDExpression;
-    Lexer_NextToken(Scope);
-    Result := ParseConstExpression(Scope, {out} LStoredExpr, ExprRValue);
-    CheckEmptyExpression(LStoredExpr);
-    if LStoredExpr.IsProcedure then
-    begin
-      // check "stored" function signature
-      if not Assigned(LStoredExpr.AsProcedure.ResultType) or
-         (LStoredExpr.AsProcedure.ResultType.DataTypeID <> dtBoolean) then
-        ERRORS.BOOLEAN_EXPRESSION_REQUIRED(LStoredExpr);
-    end else
-      CheckBooleanExpression(LStoredExpr);
-  end;
+  if Lexer_IsCurrentToken(tokenD_stored) then
+    Result := ParsePropertyStored(Scope, Prop);
 
   // regular property default value (note: default is ambiguous keyword)
-  if Lexer_IsCurrentToken(token_default) then
+  if Lexer_IsCurrentToken(tokenD_default) then
   begin
     var LDefaultExpr: TIDExpression;
     Lexer_NextToken(Scope);
     Result := ParseConstExpression(Scope, {out} LDefaultExpr, ExprRValue);
     CheckEmptyExpression(LDefaultExpr);
-  end;
+  end else
+  if Lexer_IsCurrentToken(tokenD_nodefault) then
+    Result := Lexer_NextToken(Scope);
 
   Lexer_MatchToken(Result, token_semicolon);
   Result := Lexer_NextToken(Scope);
 
   // indexed default propery (note: default is ambiguous keyword)
-  if Lexer_IsCurrentToken(token_default) then
+  if Lexer_IsCurrentToken(tokenD_default) then
   begin
     if Prop.ParamsCount = 0 then
       ERRORS.DEFAULT_PROP_MUST_BE_ARRAY_PROP;
     if not Assigned(Struct.DefaultProperty) then
-      Struct.DefaultProperty := Prop
-    else
-      ERRORS.DEFAULT_PROP_ALREADY_EXIST(Struct.DefaultProperty);
+    begin
+      Struct.DefaultProperty := Prop;
+      Prop.DefaultIndexedProperty := True;
+    end else
+      ERRORS.DEFAULT_PROP_ALREADY_EXIST(Prop);
     Lexer_ReadSemicolon(Scope);
     Result := Lexer_NextToken(Scope);
   end;
+end;
+
+function TASTDelphiUnit.ParsePropertyGetter(Scope: TScope; AProp: TIDProperty): TTokenID;
+var
+  SContext: TSContext;
+  EContext: TEContext;
+  LExpr: TIDExpression;
+  LDataType: TIDType;
+  ASTE: TASTExpression;
+begin
+  SContext := fUnitSContext;
+  InitEContext(EContext, SContext, ExprRValue);
+  Lexer_NextToken(Scope);
+  Result := ParseExpression(Scope, SContext, EContext, ASTE);
+  LExpr := EContext.Result;
+  if LExpr.ItemType = itProcedure then
+  begin
+    var LIndexedParams: TIDParamArray;
+    if Assigned(AProp.Params) then
+      LIndexedParams := AProp.Params.ExplicitParams;
+
+    var LProc := LExpr.AsProcedure;
+    LDataType := LProc.ResultType;
+    if not Assigned(LDataType) then
+      AbortWork(sFieldConstOrFuncRequiredForGetter, LExpr.TextPosition);
+
+    MatchPropGetter(AProp, LProc, LIndexedParams);
+  end else
+    LDataType := LExpr.DataType;
+
+  CheckImplicitTypes(LDataType, AProp.DataType, LExpr.TextPosition);
+  AProp.Getter := LExpr.Declaration;
+end;
+
+function TASTDelphiUnit.ParsePropertySetter(Scope: TScope; AProp: TIDProperty): TTokenID;
+var
+  SContext: TSContext;
+  EContext: TEContext;
+  LExpr: TIDExpression;
+  ASTE: TASTExpression;
+begin
+  SContext := fUnitSContext;
+  InitEContext(EContext, SContext, ExprRValue);
+  Lexer_NextToken(Scope);
+  Result := ParseExpression(Scope, SContext, EContext, {out} ASTE);
+  LExpr := EContext.Result;
+  var LIndexedParams: TIDParamArray;
+  if Assigned(AProp.Params) then
+    LIndexedParams := AProp.Params.ExplicitParams;
+  case LExpr.ItemType of
+    itVar: {do nothing};  // todo: check scope of the field
+    itProcedure: MatchPropSetter(AProp, LExpr, LIndexedParams);
+  else
+    AbortWork(sFieldOrProcRequiredForSetter, LExpr.TextPosition);
+  end;
+  AProp.Setter := LExpr.Declaration;
+end;
+
+function TASTDelphiUnit.ParsePropertyStored(Scope: TScope; AProp: TIDProperty): TTokenID;
+var
+  SContext: TSContext;
+  EContext: TEContext;
+  LExpr: TIDExpression;
+  ASTE: TASTExpression;
+begin
+  SContext := fUnitSContext;
+  InitEContext(EContext, SContext, ExprRValue);
+  Lexer_NextToken(Scope);
+  Result := ParseExpression(Scope, SContext, {var} EContext, {out} ASTE);
+  LExpr := EContext.Result;
+  CheckEmptyExpression(LExpr);
+  if LExpr.IsProcedure then
+  begin
+    // check "stored" function signature
+    if not Assigned(LExpr.AsProcedure.ResultType) or
+       (LExpr.AsProcedure.ResultType.DataTypeID <> dtBoolean) then
+      ERRORS.BOOLEAN_EXPRESSION_REQUIRED(LExpr);
+  end else
+    CheckBooleanExpression(LExpr);
 end;
 
 procedure TASTDelphiUnit.ParseCondDefine(Scope: TScope; add_define: Boolean);
@@ -5256,9 +5395,9 @@ var
   LExpr: TIDExpression;
   LConstID: TIdentifier;
 begin
-  Lexer_MatchIdentifier(Lexer_NextToken(Scope));
   repeat
-    Lexer_ReadCurrIdentifier(LConstID); // read name
+    Lexer_MatchIdentifier(Lexer_CurTokenID);
+    Lexer_ReadCurrIdentifier(LConstID);
     Result := Lexer_NextToken(Scope);
     if Result = token_colon then
       Result := ParseTypeSpec(Scope, {out} LExplicitType)
@@ -5284,12 +5423,25 @@ begin
     end;
     CheckConstExpression(LExpr);
 
-    LConst := LExpr.AsConst;
+    // the const is an interface guid
+    if LExpr.ItemType = itType then
+    begin
+      if LExpr.AsType.DataTypeID = dtInterface then
+      begin
+        var LIntfDecl := LExpr.AsType.Original as TIDInterface;
+        LConst := LIntfDecl.GuidDecl;
+        if not Assigned(LConst) then
+          ERRORS.E2232_INTERFACE_HAS_NO_INTERFACE_IDENTIFICATION(LIntfDecl);
+      end else
+        ERRORS.CONST_EXPRESSION_REQUIRED(LExpr);
+    end else
+      LConst := LExpr.AsConst;
+
     if LConst.IsAnonymous then
       LConst.ID := LConstID
     else begin
       // create a const alias
-      var LNewConst := LConst.MakeCopy(Scope) as TIDConstant;
+      var LNewConst := LConst.MakeCopy as TIDConstant;
       LNewConst.ID := LConstID;
       LNewConst.DataType := LConst.DataType;
       LNewConst.AssignValue(LConst);
@@ -5299,8 +5451,7 @@ begin
     if not Assigned(LExplicitType) then
       LConst.DataType := CheckAndCorrectType(LExpr);
 
-    if Lexer_IsCurrentToken(token_platform) then
-      Result := ParsePlatform(Scope);
+    Result := CheckAndParsePlatform(Scope);
 
     Result := CheckAndParseDeprecated(Scope, Result);
 
@@ -5311,7 +5462,22 @@ begin
     //AddConstant(LConst);
 
     Result := Lexer_NextToken(Scope);
-  until (not Lexer_IsCurrentIdentifier) or AInlineConst;
+  until (Result <> token_identifier) or AInlineConst;
+end;
+
+function TASTDelphiUnit.ParseConstSectionInStruct(Scope: TScope): TTokenID;
+begin
+  Lexer_NextToken(Scope);
+  while True do begin
+    Result := ParseConstSection(Scope, {AInlineConst:} True);
+    if (Result <> token_identifier) or
+       (Lexer_AmbiguousId in [tokenD_strict,
+                              tokenD_private,
+                              tokenD_protected,
+                              tokenD_public,
+                              tokenD_published]) then
+     Break;
+  end;
 end;
 
 function TASTDelphiUnit.ParseDeprecated(Scope: TScope; out DeprecatedExpr: TIDExpression): TTokenID;
@@ -5360,7 +5526,7 @@ begin
     Result := Lexer_NextToken(Scope);
 
     // parse fields first
-    if (Result = token_identifier) or (Result = token_id_or_keyword) then
+    if (Result = token_identifier) {or (Result = token_id_or_keyword)} then
     begin
       Result := ParseFieldsInCaseRecord(Scope, vPublic, Decl);
     end;
@@ -5378,7 +5544,7 @@ begin
         Result := Lexer_NextToken(Scope);
 
       case Result of
-        token_minus, token_identifier, token_id_or_keyword:  Continue;
+        token_minus, token_identifier{, token_id_or_keyword}:  Continue;
         token_closeround, token_end: Exit;
       else
         ERRORS.IDENTIFIER_EXPECTED(Result);
@@ -5628,14 +5794,138 @@ function TASTDelphiUnit.ParseClassOfType(Scope: TScope; const ID: TIdentifier; o
 var
   RefType: TIDClass;
   Expr: TIDExpression;
+  LRefID: TIdentifier;
 begin
-  Lexer_NextToken(Scope);
-  Result := ParseConstExpression(Scope, Expr, ExprRValue);
-  CheckClassType(Expr);
-  RefType := TIDClass(Expr.Declaration);
-  Decl := TIDClassOf.Create(Scope, ID);
-  Decl.ReferenceType := RefType;
-  Scope.AddType(Decl);
+  Lexer_ReadNextIdentifier(Scope, {out} LRefID);
+  RefType := TIDClass(FindIDNoAbort(Scope, LRefID));
+  // use the target type if it has been declared in the same unit
+  if Assigned(RefType) and (RefType.Scope.DeclUnit = Self) then
+  begin
+    Result := ParseConstExpression(Scope, Expr, ExprRValue);
+    CheckClassType(Expr);
+    RefType := TIDClass(Expr.Declaration);
+    Decl := TIDClassOf.Create(Scope, ID);
+    Decl.ReferenceType := RefType;
+    Scope.AddType(Decl);
+  end else begin
+    // if not, treat this as forward declaration
+    Decl := TIDClassOf.Create(Scope, ID);
+    Decl.ForwardID := LRefID;
+    Decl.NeedForward := True;
+    fForwardTypes.Add(Decl);
+    if ID.Name <> '' then
+      Scope.AddType(Decl);
+    Result := Lexer_NextToken(Scope);
+  end;
+end;
+
+function TASTDelphiUnit.ParseGenericTypeDecl(Scope: TScope;
+                                             GDescriptor: PGenericDescriptor;
+                                             const ID: TIdentifier;
+                                             ATypeClass: TIDTypeClass): TIDType;
+var
+  LFwdDecl: TIDType;
+begin
+  Result := nil;
+
+  if ID.Name <> '' then
+  begin
+    // search for forward declarations first
+    LFwdDecl := TIDType(Scope.FindID(ID.Name));
+
+    // TODO: accept forward declarations in the same scope only
+    if Assigned(LFwdDecl) then
+    begin
+      // check existing declration is a forward declaration (none: can be an alias)
+      if (LFwdDecl.Original is ATypeClass) then
+      begin
+        while True do
+        begin
+          var LFwdGDescriptor := TIDClass(LFwdDecl).GenericDescriptor;
+          var LSameGenericParams :=
+            (not Assigned(LFwdGDescriptor) and not Assigned(GDescriptor)) or
+            (Assigned(LFwdGDescriptor) and Assigned(GDescriptor) and LFwdGDescriptor.IsEqual(GDescriptor));
+
+          if LSameGenericParams then
+          begin
+            if LFwdDecl.NeedForward then
+            begin
+              // the forward declaration found
+              LFwdDecl.NeedForward := False;
+              fForwardTypes.Remove(LFwdDecl);
+              Result := LFwdDecl;
+              Break;
+            end else
+              ERRORS.ID_REDECLARATED(ID);
+          end;
+          if Assigned(LFwdDecl.NextGenericOverload) then
+            LFwdDecl := TIDType(LFwdDecl.NextGenericOverload)
+          else
+            Break;
+        end;
+      end else
+        ERRORS.ID_REDECLARATED(ID);
+    end;
+  end;
+
+  if not Assigned(Result) then
+  begin
+    Result := ATypeClass.Create(Scope, ID);
+    // for generic types, we need to move all generic params into static-members scope
+    if Assigned(GDescriptor) and (Result is TIDStructure) then
+      TIDStructure(Result).Members.AssingFrom(GDescriptor.Scope);
+
+    Result.GenericDescriptor := GDescriptor;
+
+    if ID.Name <> '' then
+    begin
+      // if this is a first declaration with this name, add to scope, otherwise - add to overloads
+      if not Assigned(LFwdDecl) then
+        Scope.AddType(Result)
+      else
+        LFwdDecl.AddGenecricOverload(Result);
+    end;
+  end;
+end;
+
+function TASTDelphiUnit.ParseVisibilityModifiers(Scope: TScope; var AVisibility: TVisibility; AIsClass: Boolean): TTokenID;
+begin
+  Result := Lexer_CurTokenID;
+  while True do
+    case Lexer_AmbiguousId of
+      tokenD_published: begin
+        if AIsClass then
+        begin
+          AVisibility := vPublic;
+          Result := Lexer_NextToken(Scope);
+        end else
+          AbortWork('E2184 PUBLISHED section valid only in class types', Lexer_Position);
+      end;
+      tokenD_public: begin
+        AVisibility := vPublic;
+        Result := Lexer_NextToken(Scope);
+      end;
+      tokenD_private: begin
+        AVisibility := vPrivate;
+        Result := Lexer_NextToken(Scope);
+      end;
+      tokenD_protected: begin
+        AVisibility := vProtected;
+        Result := Lexer_NextToken(Scope);
+      end;
+      tokenD_strict: begin
+        Result := Lexer_NextReseredToken(Scope);
+        case Result of
+          tokenD_private: AVisibility := vStrictPrivate;
+          tokenD_protected: AVisibility := vStrictProtected;
+        else
+          ERRORS.EXPECTED_TOKEN(tokenD_private, Result);
+        end;
+        Result := Lexer_NextToken(Scope);
+      end;
+    else
+      Break;
+    end;
 end;
 
 function TASTDelphiUnit.ParseClassType(Scope: TScope; GDescriptor: PGenericDescriptor; const ID: TIdentifier;
@@ -5643,39 +5933,44 @@ function TASTDelphiUnit.ParseClassType(Scope: TScope; GDescriptor: PGenericDescr
 var
   Visibility: TVisibility;
   //Ancestor: TIDClass;
-  FwdDecl: TIDDeclaration;
 begin
   Visibility := vPublic;
 
-  FwdDecl := Scope.FindID(ID.Name);
-  if not Assigned(FwdDecl) then
+  Result := Lexer_AmbiguousId;
+
+  if Result = tokenD_helper then
   begin
-    Decl := TIDClass.Create(Scope, ID);
-    // for generic types, we need to move all generic params into static-members scope
-    if Assigned(GDescriptor) then
-      Decl.Members.AssingFrom(GDescriptor.Scope);
-    Decl.GenericDescriptor := GDescriptor;
-    Scope.AddType(Decl);
-  end else begin
-    if (FwdDecl.ItemType = itType) and (TIDType(FwdDecl).DataTypeID = dtClass) and TIDType(FwdDecl).NeedForward then
-      Decl := FwdDecl as TIDClass
-    else
-      ERRORS.ID_REDECLARATED(FwdDecl);
+    Result := ParseTypeHelper(Scope, nil, GDescriptor, ID, {out} TDlphHelper(Decl));
+    Exit;
   end;
+
+
+  Decl := TIDClass(ParseGenericTypeDecl(Scope, GDescriptor, ID, TIDClass));
 
   if (Self = SYSUnit) and (ID.Name = 'TObject') then
     Sys._TObject := Decl;
 
-  Result := Lexer_CurTokenID;
 
-  if Result = token_abstract then
+  // semicolon means this is forward declaration
+  if Result = token_semicolon then
+  begin
+    if Decl.NeedForward then
+      ERRORS.ID_REDECLARATED(ID);
+    Decl.NeedForward := True;
+    fForwardTypes.Add(Decl);
+    Exit;
+  end;
+
+  if Lexer_IsCurrentToken(tokenD_abstract) then
   begin
     // class is abstract
+    Decl.ClassDeclFlags := Decl.ClassDeclFlags + [cdfAbstract];
     Result := Lexer_NextToken(Scope);
   end else
-  if Result = token_sealed then
+  if Result = tokenD_sealed then
   begin
     // class is sealed
+    Decl.ClassDeclFlags := Decl.ClassDeclFlags + [cdfSealed];
     Result := Lexer_NextToken(Scope);
   end;
 
@@ -5687,21 +5982,16 @@ begin
       Decl.AncestorDecl := Sys._TObject;
   end;
 
-  // если найден символ ; - то это forward-декларация
+  // semicolon means a short declaration (without end)
   if Result = token_semicolon then
   begin
-    if Decl.NeedForward then
-      ERRORS.ID_REDECLARATED(ID);
-    Decl.NeedForward := True;
+    Decl.StructFlags := Decl.StructFlags + [StructCompleted];
+    //Result := Lexer_NextToken(Scope);
     Exit;
   end;
 
-  if Result = token_abstract then
-  begin
-    Result := Lexer_NextToken(Scope);
-  end;
-
   while True do begin
+    Result := ParseVisibilityModifiers(Scope, {var} Visibility, {AIsClass:} True);
     case Result of
       token_openblock: Result := ParseAttribute(Scope);
       token_class: Result := ParseTypeMember(Scope, Decl);
@@ -5716,30 +6006,8 @@ begin
         Lexer_NextToken(Scope);
         Result := ParseFieldsSection(Decl.Members, Visibility, Decl, False);
       end;
-      token_const: Result := ParseConstSection(Decl.Members);
-      token_type: Result := ParseNamedTypeDecl(Decl.Members);
-      token_public, token_published: begin
-        Visibility := vPublic;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_private: begin
-        Visibility := vPrivate;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_protected: begin
-        Visibility := vProtected;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_strict: begin
-        Result := Lexer_NextToken(Scope);
-        case Result of
-          token_private: Visibility := vStrictPrivate;
-          token_protected: Visibility := vStrictProtected;
-        else
-          ERRORS.EXPECTED_TOKEN(token_private, Result);
-        end;
-        Result := Lexer_NextToken(Scope);
-      end;
+      token_const: Result := ParseConstSectionInStruct(Decl.Members);
+      token_type: Result := ParseTypeSectionInStruct(Decl.Members);
       token_identifier: begin
         Result := ParseFieldsSection(Decl.Members, Visibility, Decl, False);
       end
@@ -5836,7 +6104,7 @@ begin
   RoundCount := 0;
   RecordInitResultExpr := nil;
   // treat any ambiguous token as identifier here
-  Result := Lexer_TreatTokenAsIdentifier(Lexer_CurTokenID);
+  Result := Lexer_CurTokenID;
   ASTE := TASTExpression.Create(nil);
   while True do begin
     case Result of
@@ -6030,7 +6298,7 @@ begin
         Status := rpOperand;
         continue;
       end;
-      token_identifier, token_id_or_keyword: begin
+      token_identifier{, token_id_or_keyword}: begin
         // есил встретился подряд воторой идентификатор, то выходим
         if Status = rpOperand then
           Break;
@@ -6096,7 +6364,7 @@ begin
   fUnitSContext := TSContext.Create(Self, IntfScope);
   fErrors := TASTDelphiErrors.Create(Lexer);
   fCache := TDeclCache.Create;
-  fForwardPtrTypes := TList<TIDPointer>.Create;
+  fForwardTypes := TList<TIDType>.Create;
 
   FOptions := TDelphiOptions.Create(Package.Options);
 
@@ -6482,14 +6750,14 @@ begin
         end else
           ERRORS.GENERIC_INVALID_CONSTRAINT(Result);
       end;
-      token_identifier, token_id_or_keyword: begin
+      token_identifier{, token_id_or_keyword}: begin
         if AConstraint = gsNone then
         begin
           var AID: TIdentifier;
           Lexer_ReadCurrIdentifier(AID);
           var ADeclaration := FindID(Scope, AID);
           if (ADeclaration.ItemType = itType) and
-             (TIDType(ADeclaration).DataTypeID in [dtClass, dtInterface]) then
+             (TIDType(ADeclaration).DataTypeID in [dtClass, dtInterface, dtGeneric]) then
           begin
             AConstraintType := TIDType(ADeclaration);
             AConstraint := gsType;
@@ -6592,27 +6860,48 @@ function TASTDelphiUnit.ParseGenericTypeSpec(Scope, ASearchScope: TScope; const 
 
 var
   LGenericArgs: TIDExpressions;
-  SearchName: string;
   LCanInstantiate: Boolean;
 begin
+  DataType := nil;
   Result := ParseGenericsArgs(Scope, fUnitSContext, {out} LGenericArgs, {out} LCanInstantiate);
-  SearchName := format('%s<%d>', [ID.Name, Length(LGenericArgs)]);
-  var LGenericType := TIDType(FindIDNoAbort(ASearchScope, SearchName));
-  if Assigned(LGenericType) then
+  // find all types with the same name
+  var LDeclArray := FindAll(ASearchScope, ID);
+  for var LIndex := 0 to Length(LDeclArray) - 1 do
   begin
-    if LCanInstantiate and
-       not IsGenericTypeThisStruct(Scope, LGenericType) then
+    var LDecl := LDeclArray[LIndex];
+    if LDecl.ItemType = itType then
     begin
-      DataType := InstantiateGenericType(Scope, LGenericType, LGenericArgs);
-    end else
-    begin
-      // check if this type is not the current parsed type
-      if not IsTheStructIsOwner(Scope, LGenericType) then
-        DataType := TIDGenericInstantiation.CreateInstantiation(Scope, LGenericType as TIDType, LGenericArgs)
-      else
-        DataType := LGenericType;
+      var LType := TIDType(LDecl);
+      // each generic types can have overloads, find proper one
+      while Assigned(LType) do
+      begin
+        // searching proper generic declaration
+        if Assigned(LType.GenericDescriptor) and
+          (LType.GenericDescriptor.ParamsCount = Length(LGenericArgs)) then
+         Break;
+
+        LType := TIDType(LType.NextGenericOverload);
+      end;
+
+      // if LType is assigned, we found proper declaration
+      if Assigned(LType) then
+      begin
+        if LCanInstantiate and not IsGenericTypeThisStruct(Scope, LType) then
+        begin
+          DataType := InstantiateGenericType(Scope, LType, LGenericArgs);
+        end else
+        begin
+          // check if this type is not the current parsed type
+          if not IsTheStructIsOwner(Scope, LType) then
+            DataType := TIDGenericInstantiation.CreateInstantiation(Scope, LType as TIDType, LGenericArgs)
+          else
+            DataType := LType;
+        end;
+        Break;
+      end;
     end;
-  end else
+  end;
+  if not Assigned(DataType) then
     ERRORS.UNDECLARED_ID(MakeGenericName(LGenericArgs), ID.TextPosition);
 end;
 
@@ -6752,33 +7041,33 @@ end;
 
 function TASTDelphiUnit.ParseImportStatement(Scope: TScope; out ImportLib, ImportName: TIDDeclaration): TTokenID;
 var
-  LibExpr, NameExpr: TIDExpression;
+  LLibNameExpr, LProcNameExpr: TIDExpression;
 begin
   // читаем имя библиотеки
   Lexer_NextToken(Scope);
-  Result := ParseConstExpression(Scope, LibExpr, ExprRValue);
-  if Assigned(LibExpr) then
+  Result := ParseConstExpression(Scope, {out} LLibNameExpr, ExprRValue);
+  if Assigned(LLibNameExpr) then
   begin
-    CheckStringExpression(LibExpr);
+    CheckStringExpression(LLibNameExpr);
 
-    ImportLib := LibExpr.Declaration;
+    ImportLib := LLibNameExpr.Declaration;
 
-    if (Result = token_identifier) and (Lexer_AmbiguousId = token_name) then
+    if Lexer_AmbiguousId = tokenD_name then
     begin
       // читаем имя декларации
       Lexer_NextToken(Scope);
-      Result := ParseConstExpression(Scope, NameExpr, ExprRValue);
+      Result := ParseConstExpression(Scope, LProcNameExpr, ExprRValue);
 
-      CheckEmptyExpression(NameExpr);
-      CheckStringExpression(NameExpr);
+      CheckEmptyExpression(LProcNameExpr);
+      CheckStringExpression(LProcNameExpr);
 
-      ImportName := NameExpr.Declaration;
+      ImportName := LProcNameExpr.Declaration;
     end else
       ImportName := nil;
   end; // else todo:
 
   // delayed
-  if Result = token_delayed then
+  if Lexer_AmbiguousId = tokenD_delayed then
     Result := Lexer_NextToken(Scope);
 
   Lexer_MatchSemicolon(Result);
@@ -6838,7 +7127,7 @@ begin
     if Result = token_openblock then
       Result := ParseAttribute(EntryScope);
 
-    case Result of
+    case Lexer_TreatTokenAsToken(Result) of
       token_const: begin
         Include(VarFlags, VarConst);
         Result := Lexer_NextToken(EntryScope);
@@ -6847,12 +7136,9 @@ begin
         Include(VarFlags, VarInOut);
         Result := Lexer_NextToken(EntryScope);
       end;
-      token_identifier: begin
-        if Lexer_AmbiguousId = token_out then
-        begin
-          Include(VarFlags, VarOut);
-          Result := Lexer_NextToken(EntryScope);
-        end;
+      tokenD_out: begin
+        Include(VarFlags, VarOut);
+        Result := Lexer_NextToken(EntryScope);
       end;
     end;
 
@@ -6945,7 +7231,7 @@ begin
       Dispose(NextItem);
     end;
 
-    Exit;
+    Break;
   end;
 end;
 
@@ -6966,12 +7252,16 @@ begin
   end;
 end;
 
-function TASTDelphiUnit.ParsePlatform(Scope: TScope): TTokenID;
+function TASTDelphiUnit.CheckAndParsePlatform(Scope: TScope): TTokenID;
 begin
-  Result := Lexer_NextToken(Scope);
+  //TODO: parse deprecated text
+  if Lexer_IsCurrentToken(tokenD_platform) then
+    Result := Lexer_NextToken(Scope)
+  else
+    Result := Lexer_CurTokenID;
 end;
 
-function TASTDelphiUnit.GetPtrReferenceType(Decl: TIDPointer): TIDType;
+function TASTDelphiUnit.GetPtrReferenceType(Decl: TIDRefType): TIDType;
 begin
   Result := Decl.ReferenceType;
   // if the type has been declared as forward, find the reference type
@@ -7015,10 +7305,11 @@ begin
     Decl := TIDPointer.Create(Scope, ID);
     Decl.ForwardID := TmpID;
     Decl.NeedForward := True;
-    fForwardPtrTypes.Add(Decl);
+    fForwardTypes.Add(Decl);
     if ID.Name <> '' then
       Scope.AddType(Decl);
   end;
+  Decl.PointerMath := Options.POINTERMATH;
   Result := Lexer_NextToken(Scope);
 end;
 
@@ -7036,13 +7327,12 @@ begin
         Lexer_NextToken(Scope);
         Result := ParseVarSection(Scope, vLocal, False);
       end;
-      token_weak: begin
-        Lexer_NextToken(Scope);
-        Result := ParseVarSection(Scope, vLocal, True);
-      end;
       token_label: Result := ParseLabelSection(Scope);
-      token_const: Result := ParseConstSection(Scope);
-      token_type: Result := ParseNamedTypeDecl(Scope);
+      token_const: begin
+        Lexer_NextToken(Scope);
+        Result := ParseConstSection(Scope);
+      end;
+      token_type: Result := ParseTypeSection(Scope);
       token_procedure: Result := ParseProcedure(Scope, ptProc);
       token_function: Result := ParseProcedure(Scope, ptFunc);
       token_identifier: ERRORS.KEYWORD_EXPECTED;
@@ -7192,9 +7482,9 @@ begin
 
   if Result = token_semicolon then
     Result := Lexer_NextToken(Scope)
-  else
+  {else
   if not (Result in [token_overload, token_stdcall, token_cdecl]) then
-    ERRORS.SEMICOLON_EXPECTED;
+    ERRORS.SEMICOLON_EXPECTED};
 
   case ProcType of
     ptClassFunc,
@@ -7216,23 +7506,26 @@ begin
 
   // parse proc specifiers
   while True do begin
-    case Result of
-      token_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
-      token_export: Result := ProcSpec_Export(Scope, ProcFlags);
+    case Lexer_TreatTokenAsToken(Result) of
+      tokenD_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
+      tokenD_export: Result := ProcSpec_Export(Scope, ProcFlags);
       token_inline: Result := ProcSpec_Inline(Scope, ProcFlags);
-      token_external: Result := ProcSpec_External(Scope, ImportLib, ImportName, ProcFlags);
-      token_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
-      token_virtual: Result := ProcSpec_Virtual(Scope, Struct, ProcFlags);
-      token_dynamic: Result := ProcSpec_Dynamic(Scope, Struct, ProcFlags);
-      token_abstract: Result := ProcSpec_Abstract(Scope, Struct, ProcFlags);
-      token_override: Result := ProcSpec_Override(Scope, Struct, ProcFlags);
-      token_final: Result := ProcSpec_Final(Scope, Struct, ProcFlags);
-      token_reintroduce: Result := ProcSpec_Reintroduce(Scope, ProcFlags);
-      token_static: Result := ProcSpec_Static(Scope, ProcFlags, ProcType);
-      token_stdcall: Result := ProcSpec_StdCall(Scope, CallConv);
-      token_fastcall: Result := ProcSpec_FastCall(Scope, CallConv);
-      token_cdecl: Result := ProcSpec_CDecl(Scope, CallConv);
-      token_varargs: begin
+      tokenD_external: Result := ProcSpec_External(Scope, ImportLib, ImportName, ProcFlags);
+      tokenD_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
+      tokenD_virtual: Result := ProcSpec_Virtual(Scope, Struct, ProcFlags);
+      tokenD_dynamic: Result := ProcSpec_Dynamic(Scope, Struct, ProcFlags);
+      tokenD_abstract: Result := ProcSpec_Abstract(Scope, Struct, ProcFlags);
+      tokenD_override: Result := ProcSpec_Override(Scope, Struct, ProcFlags);
+      tokenD_final: Result := ProcSpec_Final(Scope, Struct, ProcFlags);
+      tokenD_reintroduce: Result := ProcSpec_Reintroduce(Scope, ProcFlags);
+      tokenD_static: Result := ProcSpec_Static(Scope, ProcFlags, ProcType);
+      tokenD_stdcall: Result := ProcSpec_StdCall(Scope, CallConv);
+      tokenD_safecall: Result := ProcSpec_SafeCall(Scope, CallConv);
+      tokenD_fastcall: Result := ProcSpec_FastCall(Scope, CallConv);
+      tokenD_cdecl: Result := ProcSpec_CDecl(Scope, CallConv);
+      tokenD_dispid: Result := ProcSpec_DispId(Scope, Struct, ID);
+      tokenD_message: Result := ProcSpec_Message(Scope, ProcFlags);
+      tokenD_varargs: begin
         Lexer_ReadSemicolon(Scope);
         Result := Lexer_NextToken(Scope);
       end;
@@ -7240,12 +7533,9 @@ begin
         CheckAndParseDeprecated(Scope, token_deprecated);
         Result := Lexer_NextToken(Scope);
       end;
-      token_id_or_keyword: begin
-        if Lexer_AmbiguousId = token_platform then
-        begin
-          ParsePlatform(Scope);
-          Result := Lexer_NextToken(Scope);
-        end;
+      tokenD_platform: begin
+        CheckAndParsePlatform(Scope);
+        Result := Lexer_NextToken(Scope);
       end;
     else
       break;
@@ -7396,7 +7686,7 @@ begin
       Proc.InheritedProc := Struct.FindVirtualProcInAncestor(Proc);
       if not Assigned(Proc.InheritedProc) then
       begin
-        // todo: tmp
+        // todo: for debug
         Proc.InheritedProc := Struct.FindVirtualProcInAncestor(Proc);
         ERRORS.NO_METHOD_IN_BASE_CLASS(Proc);
       end;
@@ -7472,26 +7762,24 @@ begin
     ResultType := nil;
 
   if Result = token_semicolon then
-    Result := Lexer_NextToken(Scope)
-  else
-  if not (Result in [token_overload, token_stdcall, token_cdecl]) then
-    ERRORS.SEMICOLON_EXPECTED;
+    Result := Lexer_NextToken(Scope);
 
   ProcFlags := [];
   CallConv := ConvNative;
 
   // parse proc specifiers
   while True do begin
-    case Result of
-      token_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
-      token_export: Result := ProcSpec_Export(Scope, ProcFlags);
+    case Lexer_TreatTokenAsToken(Result) of
+      tokenD_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
+      tokenD_export: Result := ProcSpec_Export(Scope, ProcFlags);
       token_inline: Result := ProcSpec_Inline(Scope, ProcFlags);
-      token_external: Result := ProcSpec_External(Scope, ImportLib, ImportName, ProcFlags);
-      token_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
-      token_stdcall: Result := ProcSpec_StdCall(Scope, CallConv);
-      token_fastcall: Result := ProcSpec_FastCall(Scope, CallConv);
-      token_cdecl: Result := ProcSpec_CDecl(Scope, CallConv);
-      token_varargs: begin
+      tokenD_external: Result := ProcSpec_External(Scope, ImportLib, ImportName, ProcFlags);
+      tokenD_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
+      tokenD_stdcall: Result := ProcSpec_StdCall(Scope, CallConv);
+      tokenD_safecall: Result := ProcSpec_SafeCall(Scope, CallConv);
+      tokenD_fastcall: Result := ProcSpec_FastCall(Scope, CallConv);
+      tokenD_cdecl: Result := ProcSpec_CDecl(Scope, CallConv);
+      tokenD_varargs: begin
         Lexer_ReadSemicolon(Scope);
         Result := Lexer_NextToken(Scope);
       end;
@@ -7499,12 +7787,10 @@ begin
         CheckAndParseDeprecated(Scope, token_deprecated);
         Result := Lexer_NextToken(Scope);
       end;
-      token_id_or_keyword: begin
-        if Lexer_AmbiguousId = token_platform then
-        begin
-          ParsePlatform(Scope);
-          Result := Lexer_NextToken(Scope);
-        end;
+      tokenD_platform:
+      begin
+        CheckAndParsePlatform(Scope);
+        Result := Lexer_NextToken(Scope);
       end;
     else
       break;
@@ -7619,7 +7905,6 @@ begin
     end;
   end;
 
-  CallConv := ConvNative;
   Proc.Flags := Proc.Flags + ProcFlags;
   Proc.CallConvention := CallConv;
 
@@ -7686,22 +7971,23 @@ begin
 
   if Result = token_semicolon then
     Result := Lexer_NextToken(Scope)
-  else
+  {else
   if not (Result in [token_overload, token_stdcall, token_cdecl]) then
-    ERRORS.SEMICOLON_EXPECTED;
+    ERRORS.SEMICOLON_EXPECTED};
 
   ProcFlags := [];
 
   // parse proc specifiers
   while True do begin
-    case Result of
-      token_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
+    case Lexer_TreatTokenAsToken(Result) of
+      tokenD_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
       token_inline: Result := ProcSpec_Inline(Scope, ProcFlags);
-      token_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
-      token_stdcall: Result := ProcSpec_StdCall(Scope, CallConv);
-      token_fastcall: Result := ProcSpec_FastCall(Scope, CallConv);
-      token_cdecl: Result := ProcSpec_CDecl(Scope, CallConv);
-      token_varargs: begin
+      tokenD_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
+      tokenD_stdcall: Result := ProcSpec_StdCall(Scope, CallConv);
+      tokenD_safecall:  Result := ProcSpec_SafeCall(Scope, CallConv);
+      tokenD_fastcall: Result := ProcSpec_FastCall(Scope, CallConv);
+      tokenD_cdecl: Result := ProcSpec_CDecl(Scope, CallConv);
+      tokenD_varargs: begin
         Lexer_ReadSemicolon(Scope);
         Result := Lexer_NextToken(Scope);
       end;
@@ -7709,12 +7995,10 @@ begin
         CheckAndParseDeprecated(Scope, token_deprecated);
         Result := Lexer_NextToken(Scope);
       end;
-      token_id_or_keyword: begin
-        if Lexer_AmbiguousId = token_platform then
-        begin
-          ParsePlatform(Scope);
-          Result := Lexer_NextToken(Scope);
-        end;
+      tokenD_platform:
+      begin
+        CheckAndParsePlatform(Scope);
+        Result := Lexer_NextToken(Scope);
       end;
     else
       break;
@@ -7863,7 +8147,7 @@ end;
 
 function TASTDelphiUnit.ParseProcName(AScope: TScope;
                                       AProcType: TProcType;
-                                      out AName: TIdentifier;
+                                      out AID: TIdentifier;
                                       var AStruct: TIDStructure;
                                       out AProcScope: TProcScope;
                                       out AGenericParams: TIDTypeArray): TTokenID;
@@ -7878,14 +8162,13 @@ function TASTDelphiUnit.ParseProcName(AScope: TScope;
 
 var
   Decl: TIDDeclaration;
-  SearchName: string;
   SearchScope: TScope;
 begin
   AProcScope := nil;
   SearchScope := AScope;
   var LIntfMathedDelegation := False;
   while True do begin
-    Lexer_ReadNextIdentifier(AScope, {var} AName);
+    Lexer_ReadNextIdentifier(AScope, {out} AID);
     Result := Lexer_NextToken(AScope);
     if Result = token_less then
     begin
@@ -7894,9 +8177,7 @@ begin
       else
         AProcScope := TProcScope.CreateInDecl(AScope, {Proc:} nil);
       Result := ParseGenericsHeader(AProcScope, AGenericParams);
-      SearchName := Format('%s<%d>', [AName.Name, Length(AGenericParams)]);
-    end else
-      SearchName := AName.Name;
+    end;
 
     if Result = token_dot then
     begin
@@ -7906,22 +8187,27 @@ begin
       Decl := nil;
       if AScope.ScopeClass <> scInterface then
       begin
-        Decl := SearchScope.FindID(SearchName);
+        // TODO: support generic overloads here
+        Decl := SearchScope.FindID(AID.Name);
         if not Assigned(Decl) then
-          ERRORS.UNDECLARED_ID(AName, AGenericParams);
+        begin
+          // for debug:
+          Decl := SearchScope.FindID(AID.Name);
+          ERRORS.UNDECLARED_ID(AID, AGenericParams);
+        end;
       end else
       if Assigned(AStruct) and (AStruct.DataTypeID = dtClass) then
       begin
-        var LIntf := TIDClass(AStruct).FindInterface(AName.Name, AGenericParams);
+        var LIntf := TIDClass(AStruct).FindInterface(AID.Name, AGenericParams);
         if Assigned(LIntf) then
         begin
           LIntfMathedDelegation := True;
           SearchScope := LIntf.Members;
           Continue;
         end else
-          ERRORS.UNDECLARED_ID(AName, AGenericParams);
+          ERRORS.UNDECLARED_ID(AID, AGenericParams);
       end else
-        ERRORS.UNDECLARED_ID(AName, AGenericParams);
+        ERRORS.UNDECLARED_ID(AID, AGenericParams);
 
       if Decl is TIDStructure then
       begin
@@ -7934,7 +8220,7 @@ begin
           AProcScope.Clear;
         end;
       end else
-        ERRORS.STRUCT_TYPE_REQUIRED(AName.TextPosition);
+        ERRORS.STRUCT_TYPE_REQUIRED(AID.TextPosition);
       Continue;
     end;
     if not Assigned(AProcScope) and not LIntfMathedDelegation then
@@ -7958,7 +8244,7 @@ var
 begin
   ProcClass := procStatic;
   Result := Lexer_AmbiguousId;
-  if Result = token_reference then
+  if Result = tokenD_reference then
   begin
     ProcClass := procReference;
     Lexer_ReadToken(Scope, token_to);
@@ -7971,10 +8257,9 @@ begin
     IsFunction := False;
     AbortWork('PROCEDURE or FUNCTION required', Lexer_Position);
   end;
-
-  Decl := TIDProcType.Create(Scope, ID);
-  Decl.GenericDescriptor := GDescriptor;
   Result := Lexer_NextToken(Scope);
+
+  Decl := TIDProcType(ParseGenericTypeDecl(Scope, GDescriptor, ID, TIDProcType));
 
   if Assigned(GDescriptor) then
     ParentScope := GDescriptor.Scope
@@ -8005,8 +8290,9 @@ begin
   end;
 
   Decl.ProcClass := ProcClass;
-  if ID.Name <> '' then
-    Scope.AddType(Decl);
+
+  // check and parse procedural type call convention
+  Result := CheckAndParseProcTypeCallConv(Scope, Result, Decl);
 end;
 
 function TASTDelphiUnit.ParseOperator(Scope: TScope; Struct: TIDStructure): TTokenID;
@@ -8121,12 +8407,12 @@ begin
 
   Result := Lexer_NextToken(Scope);
   while True do begin
-    case Result of
-      token_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
-      token_export: Result := ProcSpec_Export(Scope, ProcFlags);
+    case Lexer_AmbiguousId of
+      tokenD_forward: Result := ProcSpec_Forward(Scope, ProcFlags);
+      tokenD_export: Result := ProcSpec_Export(Scope, ProcFlags);
       token_inline: Result := ProcSpec_Inline(Scope, ProcFlags);
-      token_external: Result := ProcSpec_External(Scope, ImportLib, ImportName, ProcFlags);
-      token_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
+      tokenD_external: Result := ProcSpec_External(Scope, ImportLib, ImportName, ProcFlags);
+      tokenD_overload: Result := ProcSpec_Overload(Scope, ProcFlags);
     else
       if (Scope.ScopeClass = scInterface) or (pfImport in ProcFlags) then
       begin
@@ -8228,17 +8514,18 @@ var
   Visibility: TVisibility;
 begin
   Visibility := vPublic;
-  Result := Lexer_CurTokenID;
-  while True do begin
+  while True do
+  begin
+    Result := ParseVisibilityModifiers(Scope, {var} Visibility, {AIsClass:} False);
     case Result of
       token_openblock: Result := ParseAttribute(Scope);
       token_case: Result := ParseCaseRecord(Decl.Members, Decl);
       token_class: begin
-        Result := Lexer_NextToken(scope);
+        Result := Lexer_NextReseredToken(scope);
         case Result of
           token_procedure: Result := ParseProcedure(Decl.Members, ptClassProc, Decl);
           token_function: Result := ParseProcedure(Decl.Members, ptClassFunc, Decl);
-          token_operator: Result := ParseOperator(Decl.Operators, Decl);
+          tokenD_operator: Result := ParseOperator(Decl.Operators, Decl);
           token_property: Result := ParseProperty(Decl.Members, Decl);
           token_constructor: Result := ParseProcedure(Decl.Members, ptClassConstructor, Decl);
           token_destructor: Result := ParseProcedure(Decl.Members, ptClassDestructor, Decl);
@@ -8255,32 +8542,13 @@ begin
       token_constructor: Result := ParseProcedure(Decl.Members, ptConstructor, Decl);
       token_destructor: Result := ParseProcedure(Decl.Members, ptDestructor, Decl);
       token_property: Result := ParseProperty(Decl.Members, Decl);
-      token_public: begin
-        Visibility := vPublic;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_private: begin
-        Visibility := vPrivate;
-        Result := Lexer_NextToken(Scope);
-      end;
-      token_strict: begin
-        Result := Lexer_NextToken(Scope);
-        case Result of
-          token_private: Visibility := vStrictPrivate;
-          token_protected: Visibility := vStrictProtected;
-        else
-          ERRORS.EXPECTED_TOKEN(token_private, Result);
-        end;
-        Result := Lexer_NextToken(Scope);
-      end;
       token_var: begin
         Lexer_NextToken(Scope);
         Result := ParseFieldsSection(Decl.Members, Visibility, Decl, False);
       end;
-      token_const: Result := ParseConstSection(Decl.Members);
-      token_type: Result := ParseNamedTypeDecl(Decl.Members);
-      // необходимо оптимизировать парсинг ключевых слов как идентификаторов
-      token_identifier, token_name: Result := ParseFieldsSection(Decl.Members, Visibility, Decl, False);
+      token_const: Result := ParseConstSectionInStruct(Decl.Members);
+      token_type: Result := ParseTypeSectionInStruct(Decl.Members);
+      token_identifier: Result := ParseFieldsSection(Decl.Members, Visibility, Decl, False);
     else
       break;
     end;
@@ -8292,16 +8560,14 @@ begin
   Result := Lexer_NextToken(Scope);
 
   // check for align keyword
-  if Lexer_AmbiguousId = token_aling then
+  if Lexer_AmbiguousId = tokenD_aling then
   begin
     Lexer_NextToken(Scope);
     var AlignValueExpr: TIDExpression;
     Result := ParseConstExpression(Scope, {out} AlignValueExpr, ExprRValue);
   end;
 
-  if Lexer_IsCurrentToken(token_platform) then
-    Result := ParsePlatform(Scope);
-
+  Result := CheckAndParsePlatform(Scope);
   Result := CheckAndParseDeprecated(Scope, Result);
 end;
 
@@ -8497,6 +8763,17 @@ begin
     Result := Lexer_NextToken(Scope);
 end;
 
+function TASTDelphiUnit.ProcSpec_Message(Scope: TScope; var Flags: TProcFlags): TTokenID;
+var
+  LMessageExpr: TIDExpression;
+begin
+  Lexer_NextToken(Scope);
+  ParseConstExpression(Scope, {out} LMessageExpr, ExprRValue);
+  CheckEmptyExpression(LMessageExpr);
+  CheckIntExpression(LMessageExpr);
+  Result := Lexer_NextToken(Scope);
+end;
+
 function TASTDelphiUnit.ProcSpec_Export(Scope: TScope; var Flags: TProcFlags): TTokenID;
 var
   ExportID: TIdentifier;
@@ -8568,6 +8845,23 @@ begin
   Result := Lexer_NextToken(Scope);
 end;
 
+function TASTDelphiUnit.ProcSpec_DispId(AScope: TScope; AStruct: TIDStructure; const AMethodID: TIdentifier): TTokenID;
+var
+  LDispIdExpr: TIDExpression;
+begin
+  Lexer_NextToken(AScope);
+
+  if not Assigned(AStruct) or (AStruct.DataTypeID <> dtInterface) then
+    ERRORS.E2185_CANNOT_SPECIFY_DISPID(AMethodID);
+
+  Result := ParseConstExpression(AScope, {out} LDispIdExpr, ExprRValue);
+
+  if Result = token_semicolon then
+    Result := Lexer_NextToken(AScope);
+
+  CheckIntExpression(LDispIdExpr);
+end;
+
 function TASTDelphiUnit.ProcSpec_Dynamic(Scope: TScope; Struct: TIDStructure; var Flags: TProcFlags): TTokenID;
 begin
   if pfVirtual in Flags then
@@ -8627,6 +8921,17 @@ begin
   Include(Flags, pfFinal);
   Lexer_ReadSemicolon(Scope);
   Result := Lexer_NextToken(Scope);
+end;
+
+function TASTDelphiUnit.ProcSpec_SafeCall(Scope: TScope; var CallConvention: TCallConvention): TTokenID;
+begin
+  if CallConvention = ConvSafeCall then
+    ERRORS.DUPLICATE_SPECIFICATION(PS_SAFECALL);
+  CallConvention := ConvSafeCall;
+
+  Result := Lexer_NextToken(Scope);
+  if Result = token_semicolon then
+    Result := Lexer_NextToken(Scope);
 end;
 
 function TASTDelphiUnit.ProcSpec_Static(Scope: TScope; var Flags: TProcFlags; var ProcType: TProcType): TTokenID;
@@ -8690,7 +8995,15 @@ begin
     LGenericType := Scope.FindMembers(ExprName);
 
   if not Assigned(LGenericType) then
+  begin
+    // for debug
+     if not StrictSearch then
+      LGenericType := FindIDNoAbort(Scope, ExprName)
+    else
+      LGenericType := Scope.FindMembers(ExprName);
+    Exit;
     ERRORS.UNDECLARED_ID(ExprName, Lexer_PrevPosition);
+  end;
 
   if LCanInstantiate then
     Decl := InstantiateGenericType(Scope, LGenericType as TIDType, LGenericArgs)
@@ -9063,35 +9376,60 @@ var
   GenericParams: TIDTypeArray;
   GDescriptor: PGenericDescriptor;
 begin
+  CheckAndParseAttribute(Scope);
+
+  Lexer_ReadCurrIdentifier(ID);
+
+  Result := Lexer_NextToken(Scope);
+
+  {if there is "<" - read generic params}
+  if Result = token_less then begin
+    GDescriptor := TGenericDescriptor.Create(Scope);
+    Result := ParseGenericsHeader(GDescriptor.Scope, {out} GenericParams);
+    GDescriptor.GenericParams := GenericParams;
+    GDescriptor.SearchName := format('%s<%d>', [ID.Name, Length(GenericParams)]);
+  end else
+    GDescriptor := nil;
+
+  Lexer_MatchToken(Result, token_equal);
+
   Lexer_NextToken(Scope);
-  repeat
-    CheckAndParseAttribute(Scope);
 
-    Lexer_ReadCurrIdentifier(ID);
+  Result := ParseTypeDecl(Scope, GDescriptor, ID, Decl);
+  if not Assigned(Decl) then
+    ERRORS.INVALID_TYPE_DECLARATION(ID);
 
+  if Result = token_semicolon then
     Result := Lexer_NextToken(Scope);
 
-    {if there is "<" - read generic params}
-    if Result = token_less then begin
-      GDescriptor := TGenericDescriptor.Create(Scope);
-      Result := ParseGenericsHeader(GDescriptor.Scope, {out} GenericParams);
-      GDescriptor.GenericParams := GenericParams;
-      GDescriptor.SearchName := format('%s<%d>', [ID.Name, Length(GenericParams)]);
-    end else
-      GDescriptor := nil;
+  CheckForwardPtrDeclarations;
+end;
 
-    Lexer_MatchToken(Result, token_equal);
-
-    Lexer_NextToken(Scope);
-
-    Result := ParseTypeDecl(Scope, GDescriptor, ID, Decl);
-    if not Assigned(Decl) then
-      ERRORS.INVALID_TYPE_DECLARATION(ID);
-
-    CheckForwardPtrDeclarations;
-    // check and parse procedural type call convention
-    Result := CheckAndParseProcTypeCallConv(Scope, Result,  Decl);
+function TASTDelphiUnit.ParseTypeSection(Scope: TScope): TTokenID;
+begin
+  Lexer_NextToken(Scope);
+  repeat
+    Result :=  ParseNamedTypeDecl(Scope);
   until (Result <> token_identifier) and (Result <> token_openblock);
+end;
+
+function TASTDelphiUnit.ParseTypeSectionInStruct(Scope: TScope): TTokenID;
+begin
+  Lexer_NextToken(Scope);
+  while True do begin
+    Result := ParseNamedTypeDecl(Scope);
+
+    if Result = token_openblock then
+      Result := ParseAttribute(Scope);
+
+    if (Result <> token_identifier) or
+       (Lexer_AmbiguousId in [tokenD_strict,
+                              tokenD_private,
+                              tokenD_protected,
+                              tokenD_public,
+                              tokenD_published]) then
+     Break;
+  end;
 end;
 
 function TASTDelphiUnit.ParseIndexedPropertyArgs(Scope: TScope; out ArgumentsCount: Integer; var EContext: TEContext): TTokenID;
@@ -9231,39 +9569,18 @@ begin
   InitProc.LastBodyLine := Lexer_Line;
 end;
 
-function TASTDelphiUnit.ParseInterfaceType(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor; const ID: TIdentifier;
-  out Decl: TIDInterface): TTokenID;
+function TASTDelphiUnit.ParseInterfaceType(Scope, GenericScope: TScope; GDescriptor: PGenericDescriptor;
+  ADispInterface: Boolean; const ID: TIdentifier; out Decl: TIDInterface): TTokenID;
 var
-  FwdDecl: TIDDeclaration;
   Expr: TIDExpression;
   SearchName: string;
 begin
-  if not Assigned(GDescriptor) then
-    SearchName := ID.Name
-  else
-    SearchName := GDescriptor.SearchName;
-
-  FwdDecl := Scope.FindID(SearchName);
-  if not Assigned(FwdDecl) then
-  begin
-    Decl := TIDInterface.Create(Scope, ID);
-    // for generic types, we need to move all generic params into static-members scope
-    if Assigned(GDescriptor) then
-    begin
-      Decl.Members.AssingFrom(GDescriptor.Scope);
-      Decl.GenericDescriptor := GDescriptor;
-    end;
-    Scope.AddType(Decl);
-  end else
-  begin
-    if (FwdDecl.ItemType = itType) and (TIDType(FwdDecl).DataTypeID = dtInterface) and TIDType(FwdDecl).NeedForward then
-      Decl := FwdDecl as TIDInterface
-    else begin
-      ERRORS.ID_REDECLARATED(FwdDecl);
-    end;
-  end;
+  Decl := TIDInterface(ParseGenericTypeDecl(Scope, GDescriptor, ID, TIDInterface));
+  Decl.IsDisp := ADispInterface;
 
   Result := Lexer_NextToken(Scope);
+
+  // parse the ancestor
   if Result = token_openround then
   begin
     Lexer_NextToken(Scope);
@@ -9277,7 +9594,7 @@ begin
     Result := Lexer_NextToken(Scope);
   end;
 
-  // если найден символ ; - то это forward-декларация
+  // semicolon means this is forward declaration
   if Result = token_semicolon then
   begin
     if Decl.NeedForward then
@@ -9286,6 +9603,7 @@ begin
     Exit;
   end;
 
+  // parse a GUID constant
   if Result = token_openblock then
     Result := ParseIntfGUID(Scope, Decl);
 
@@ -9307,25 +9625,29 @@ end;
 
 function TASTDelphiUnit.ParseIntfGUID(Scope: TScope; Decl: TIDInterface): TTokenID;
 var
-  UID: TIDExpression;
-  GUID: TGUID;
+  LUIDStrExpr: TIDExpression;
+  LGUIDConst: TIDGuidConstant;
+  LGUID: TGUID;
 begin
   Lexer_NextToken(Scope);
   if Lexer_IdentifireType = itString then
   begin
-    Result := ParseConstExpression(Scope, UID, ExprNested);
-    CheckEmptyExpression(UID);
-    CheckStringExpression(UID);
+    Result := ParseConstExpression(Scope, {out} LUIDStrExpr, ExprNested);
+    CheckEmptyExpression(LUIDStrExpr);
+    CheckStringExpression(LUIDStrExpr);
 
     try
-      GUID := StringToGUID(UID.AsStrConst.Value);
+      LGUID := StringToGUID(LUIDStrExpr.AsStrConst.Value);
     except
       AbortWork('Invalid GUID', Lexer_Position);
     end;
 
-    Decl.GUID := GUID;
-
     Lexer_MatchToken(Result, token_closeblock);
+    
+    LGUIDConst := TIDGuidConstant.CreateAsAnonymous(Scope, Sys._GuidType, LGUID);
+    LGUIDConst.TextPosition := Lexer_Position;
+    Decl.GUIDDecl := LGUIDConst;
+
     Result := Lexer_NextToken(Scope);
   end else
     Result := ParseAttribute(Scope);
@@ -9353,7 +9675,7 @@ var
 begin
   case DataType.DataTypeID of
     dtStaticArray: Result := ParseVarStaticArrayDefaultValue(Scope, DataType as TIDArray, DefaultValue);
-    dtRecord: begin
+    dtGuid, dtRecord: begin
       Result := Lexer_NextToken(Scope);
       if (DataType.Module = SYSUnit) and (DataType.Name = 'TGUID') and (Result <> token_openround) then
       begin
@@ -9520,26 +9842,13 @@ begin
     DefaultValue := nil;
 
     // platform declaration
-    if Lexer_IsCurrentToken(token_platform) then
-      Result := ParsePlatform(Scope);
+    Result := CheckAndParsePlatform(Scope);
 
-    // check and parse procedural type call convention
-    Result := CheckAndParseProcTypeCallConv(Scope, Result, DataType);
+    // absolute
+    Result := CheckAndParseAbsolute(Scope, {out} DeclAbsolute);
 
-    case Result of
-      // значение по умолчанию
-      token_equal: Result := ParseVarDefaultValue(Scope, DataType, {out} DefaultValue);
-      // absolute
-      token_absolute: begin
-        Lexer_ReadNextIdentifier(Scope, ID);
-        DeclAbsolute := Scope.FindID(ID.Name);
-        if not Assigned(DeclAbsolute) then
-          ERRORS.UNDECLARED_ID(ID);
-        if DeclAbsolute.ItemType <> itVar then
-          AbortWork(sVariableRequired, Lexer_Position);
-        Result := Lexer_NextToken(Scope);
-      end;
-    end;
+    if Result = token_equal then
+      Result := ParseVarDefaultValue(Scope, DataType, {out} DefaultValue);
 
     // deprecated
     if Result = token_deprecated then
@@ -9555,8 +9864,6 @@ begin
       Variable.DefaultValue := DefaultValue;
       Variable.Absolute := TIDVariable(DeclAbsolute);
       Variable.Flags := Variable.Flags + VarFlags;
-//      if isRef then
-//        Field.Flags := Field.Flags + [VarNotNull];
       Scope.AddVariable(Variable);
     end;
 
@@ -9576,7 +9883,7 @@ var
   Field: TIDVariable;
   Names: TIdentifiersPool;
   VarFlags: TVariableFlags;
-  DeprecatedText: TIDExpression;
+  //DeprecatedText: TIDExpression;
 begin
   c := 0;
   Names := TIdentifiersPool.Create(2);
@@ -9598,30 +9905,24 @@ begin
     Result := ParseTypeSpec(Scope, DataType);
 
     // platform declaration
-    if Lexer_IsCurrentToken(token_platform) then
-      Result := ParsePlatform(Scope);
+    Result := CheckAndParsePlatform(Scope);
 
     // deprecated
-    if Result = token_deprecated then
-      Result := ParseDeprecated(Scope, DeprecatedText);
-
-    // check and parse procedural type call convention
-    Result := CheckAndParseProcTypeCallConv(Scope, Result, DataType);
+    Result := CheckAndParseDeprecated(Scope, Result);
 
     for i := 0 to c do begin
       Field := TIDField.Create(Struct, Names.Items[i]);
-//      // если это слабая ссылка - получаем соответствующий тип
-//      if IsWeak then
-//        DataType := GetWeakRefType(Scope, DataType);
       Field.DataType := DataType;
       Field.Visibility := Visibility;
       Field.DefaultValue := nil;
       Field.Flags := Field.Flags + VarFlags;
       Scope.AddVariable(Field);
     end;
-    if Result <> token_identifier then
-      Exit;
-    c := 0;
+
+    if Result = token_semicolon then
+      Result := Lexer_NextToken(Scope);
+
+    Exit;
   end;
 end;
 
@@ -9953,7 +10254,7 @@ end;
 
 procedure TASTDelphiUnit.CheckConstExpression(Expression: TIDExpression);
 begin
-  if not (Expression.Declaration.ItemType in [itConst, itProcedure]) then
+  if not (Expression.Declaration.ItemType in [itConst, itType, itProcedure]) then
     ERRORS.CONST_EXPRESSION_REQUIRED(Expression);
 end;
 
@@ -10010,7 +10311,7 @@ end;
 
 procedure TASTDelphiUnit.CheckIntExpression(Expression: TIDExpression);
 begin
-  if Expression.DataTypeID >= dtNativeUInt then
+  if not Assigned(Expression) or (Expression.DataTypeID >= dtNativeUInt) then
     ERRORS.INTEGER_TYPE_REQUIRED(Expression.TextPosition);
 end;
 

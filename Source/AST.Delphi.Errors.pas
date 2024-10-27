@@ -254,6 +254,7 @@ type
     class procedure NO_OVERLOAD(CallExpr: TIDExpression; const CallArgs: TIDExpressions); static;
     class procedure AMBIGUOUS_OVERLOAD_CALL(CallExpr: TIDExpression); overload; static;
     class procedure INCOMPLETE_PROC(Decl: TIDDeclaration); static;
+    class procedure TYPE_NOT_COMPLETELY_DEFINED(Decl: TIDDeclaration); static;
     class procedure NO_OVERLOAD_OPERATOR_FOR_TYPES(Op: TOperatorID; Left, Right: TIDExpression); overload; static;
     class procedure NO_OVERLOAD_OPERATOR_FOR_TYPES(Op: TOperatorID; Right: TIDExpression); overload;
     class procedure UNIT_NOT_FOUND(const ID: TIdentifier); static;
@@ -289,6 +290,9 @@ type
     class procedure VAR_IS_NOT_INITIALIZED(const Variable: TIDExpression);
 
     procedure GENERIC_INVALID_CONSTRAINT(ActualToken: TTokenID);
+
+    class procedure E2185_CANNOT_SPECIFY_DISPID(const AMethodID: TIdentifier);
+    class procedure E2232_INTERFACE_HAS_NO_INTERFACE_IDENTIFICATION(ADecl: TIDDeclaration);
 
     procedure PROCEDURE_CANNOT_HAVE_RESULT;
     procedure BREAK_OR_CONTINUE_ALLOWED_ONLY_IN_LOOPS;
@@ -545,7 +549,7 @@ begin
     AbortWork(sExpected, ['Token "' + UpperCase(Lexer.TokenLexem(Token)) + '"'], Lexer.PrevPosition)
   else
     AbortWork(sExpectedButFoundFmt, ['Token "' + UpperCase(Lexer.TokenLexem(Token)) + '"',
-                                                 UpperCase(Lexer.TokenLexem(ActulToken))], Lexer.PrevPosition);
+                                                 Lexer.OriginalToken], Lexer.PrevPosition);
 end;
 
 procedure TASTDelphiErrors.IDENTIFIER_EXPECTED(ActualToken: TTokenID);
@@ -566,6 +570,17 @@ end;
 procedure TASTDelphiErrors.IDENTIFIER_EXPECTED;
 begin
   AbortWork(sIdentifierExpected, Lexer.PrevPosition);
+end;
+
+class procedure TASTDelphiErrors.E2185_CANNOT_SPECIFY_DISPID(const AMethodID: TIdentifier);
+begin
+  AbortWork('E2185 Overriding automated virtual method ''%s'' cannot specify a dispid',
+    [AMethodID.Name], AMethodID.TextPosition);
+end;
+
+class procedure TASTDelphiErrors.E2232_INTERFACE_HAS_NO_INTERFACE_IDENTIFICATION(ADecl: TIDDeclaration);
+begin
+  AbortWork('E2232 Interface ''%s'' has no interface identification', [ADecl.Name], ADecl.TextPosition);
 end;
 
 procedure TASTDelphiErrors.EMPTY_EXPRESSION;
@@ -769,6 +784,11 @@ end;
 procedure TASTDelphiErrors.TYPE_IS_NOT_AN_ANCESTOR_FOR_THIS_TYPE(TypeDecl, ChildType: TIDType);
 begin
   AbortWork('The type "%s" is not an ancestor of type "%s"', [TypeDecl.DisplayName, ChildType.DisplayName], Lexer.Position);
+end;
+
+class procedure TASTDelphiErrors.TYPE_NOT_COMPLETELY_DEFINED(Decl: TIDDeclaration);
+begin
+  AbortWork('Type ''%s'' is not yet completely defined', [Decl.DisplayName], Decl.TextPosition);
 end;
 
 class procedure TASTDelphiErrors.TYPE_REQUIRED(const TextPosition: TTextPosition);
