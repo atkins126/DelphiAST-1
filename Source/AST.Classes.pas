@@ -7,6 +7,7 @@ uses
   AVL,
   AST.Lexer,
   AST.Intf,
+  AST.JsonSchema,
   AST.Parser.Utils,
   AST.Parser.ProcessStatuses;
 
@@ -25,20 +26,6 @@ type
 
   TASTUnitClass = class of TASTModule;
 
-  TCompilerResult = (
-    CompileNone,
-    CompileInProgress,
-    CompileSuccess,
-    CompileFail,
-    CompileSkip
-  );
-
-  TUnitScopeKind = (
-    scopeBoth,
-    scopeInterface,
-    scopeImplementation
-  );
-
   TASTItem = class(TPooledObject)
   private
     fParent: TASTItem;
@@ -47,7 +34,7 @@ type
   protected
     function GetDisplayName: string; virtual;
   public
-    constructor Create(Parent: TASTItem); virtual;
+    constructor Create(Parent: TASTItem); overload; virtual;
 //    property TypeID: TASTItemTypeID read GetItemTypeID;
     property Next: TASTItem read fNext write fNext;
     property DisplayName: string read GetDisplayName;
@@ -62,13 +49,18 @@ type
 
   TASTProject = class(TInterfacedObject, IASTProject)
   private
+    fName: string;
     fOnProgress: TASTProgressEvent;
     fOnConsoleProc: TASTRrojectConsoleWriteEvent;
+    fStopIfErrors: Boolean;
+    procedure SetName(const Value: string);
     procedure SetOnProgress(const Value: TASTProgressEvent);
     procedure SetOnConsoleWrite(const Value: TASTRrojectConsoleWriteEvent);
+    procedure SetStopCompileIfError(const Value: Boolean);
     function GetOnProgress: TASTProgressEvent;
     function GetOnConsoleWrite: TASTRrojectConsoleWriteEvent;
   protected
+    function GetName: string;
     function GetUnitClass: TASTUnitClass; virtual; abstract;
     function GetPointerSize: Integer; virtual; abstract;
     function GetNativeIntSize: Integer; virtual; abstract;
@@ -76,10 +68,18 @@ type
     function GetTotalLinesParsed: Integer; virtual;
     function GetTotalUnitsParsed: Integer; virtual;
     function GetTotalUnitsIntfOnlyParsed: Integer; virtual;
+    function GetStopCompileIfError: Boolean;
+    function InPogress: Boolean; virtual; abstract;
+    procedure PutMessage(const AMessage: IASTParserMessage); overload; virtual;
+    procedure PutMessage(const AModule: IASTModule; AMsgType: TCompilerMessageType; const AMessage: string;
+                         const ATextPostition: TTextPosition; ACritical: Boolean); overload; virtual;
   public
-    constructor Create(const Name: string); virtual; abstract;
+    constructor Create(const AName: string); virtual;
+    property Name: string read GetName write SetName;
     property OnProgress: TASTProgressEvent read GetOnProgress write SetOnProgress;
+    property StopCompileIfError: Boolean read GetStopCompileIfError write SetStopCompileIfError;
     procedure CosoleWrite(const Module: IASTModule; Line: Integer; const Message: string);
+    function ToJson: TJsonASTDeclaration; virtual;
   end;
 
   TASTParentItem = class(TASTItem)
@@ -103,40 +103,52 @@ type
     property IsTryBlock: Boolean read GetIsTryBlock;
   end;
 
-  TEnumASTDeclProc = reference to procedure (const Module: TASTModule; const Decl: TASTDeclaration);
-
   TASTModule = class(TInterfacedObject, IASTModule)
   private
     fFileName: string;
+    function GetFileName: string;
   protected
     fProject: IASTProject;
     fTotalLinesParsed: Integer;
     function GetModuleName: string; virtual;
+    function GetModulePath: string;
     function GetSource: string; virtual; abstract;
+    function GetCurrentFileName: string; virtual; abstract;
     procedure SetFileName(const Value: string);
-    procedure Progress(StatusClass: TASTProcessStatusClass); virtual;
+    procedure Progress(StatusClass: TASTProcessStatusClass; AElapsedTime: Int64); virtual;
+    procedure PutError(const AMessage: string; const ATextPosition: TTextPosition; ACritical: Boolean = False); overload;
+    procedure PutError(const AMessage: string; const AParams: array of const; const ATextPosition: TTextPosition; ACritical: Boolean = False); overload;
+    function Lexer_Line: Integer; virtual; abstract;
+    function Lexer_Position: TTextPosition; virtual; abstract;
+    function Lexer_TokenName(AToken: Integer): string; virtual; abstract;
+    function Lexer_TokenText(AToken: Integer): string; virtual; abstract;
   public
     property Name: string read GetModuleName;
-    property FileName: string read fFileName write SetFileName;
+    property FileName: string read GetFileName write SetFileName;
+    property CurrentFileName: string read GetCurrentFileName;
     property Project: IASTProject read fProject;
     function GetTotalLinesParsed: Integer;
-    constructor Create(const Project: IASTProject; const FileName: string; const Source: string = ''); virtual;
+    constructor Create(const AProject: IASTProject; const AFileName: string; const ASource: string = ''); virtual;
     constructor CreateFromFile(const Project: IASTProject; const FileName: string); virtual;
     procedure EnumDeclarations(const AEnumProc: TEnumASTDeclProc; AUnitScope: TUnitScopeKind); virtual; abstract;
     property TotalLinesParsed: Integer read GetTotalLinesParsed;
+    function ToJson: TJsonASTDeclaration; virtual;
+    function Compile(ACompileIntfOnly: Boolean; RunPostCompile: Boolean = True): TCompilerResult; virtual; abstract;
   end;
 
   TASTDeclaration = class(TASTItem, IASTDeclaration)
   protected
     fID: TIdentifier;
     fModule: TASTModule;
-
+    fHandle: Integer;
     function GetID: TIdentifier;
     function GetName: string;
     function GetSrcPos: TTextPosition;
     function GetModule: IASTModule;
     function GetDisplayName: string; override;
     function Get_Obj: TObject;
+    function GetASTKind: string; virtual;
+    function GetASTHandle: TASTHandle; virtual;
 
     procedure SetID(const AValue: TIdentifier);
     procedure SetName(const AValue: string);
@@ -148,12 +160,16 @@ type
     property SourcePosition: TTextPosition read FID.TextPosition;
     property Module: TASTModule read fModule;
     property DisplayName: string read GetDisplayName;
-
+    function ToJson: TJsonASTDeclaration; virtual;
     function Decl2Str(AFullName: Boolean = False): string; overload;
 
     procedure Decl2Str(ABuilder: TStringBuilder;
                        ANestedLevel: Integer = 0;
                        AAppendName: Boolean = True); overload; virtual;
+
+    property ASTKind: string read GetASTKind;
+    property ASTHandle: TASTHandle read GetASTHandle;
+    function ASTJsonDeclClass: TASTJsonDeclClass; virtual;
   end;
 
   TASTIDList = class(TAVLTree<string, TASTDeclaration>)
@@ -603,7 +619,9 @@ type
 
 implementation
 
-uses System.StrUtils;
+uses
+  System.StrUtils,
+  AST.Parser.Errors;
 
 procedure TASTParentItem.AddChild(Item: TASTItem);
 begin
@@ -641,10 +659,10 @@ end;
 
 { TASTUnit }
 
-constructor TASTModule.Create(const Project: IASTProject; const FileName: string; const Source: string);
+constructor TASTModule.Create(const AProject: IASTProject; const AFileName: string; const ASource: string);
 begin
-  fProject := Project;
-  fFileName := FileName;
+  fProject := AProject;
+  fFileName := AFileName;
 end;
 
 function TASTExpression.GetDisplayName: string;
@@ -802,6 +820,11 @@ end;
 
 { TASTDeclaration }
 
+function TASTDeclaration.ASTJsonDeclClass: TASTJsonDeclClass;
+begin
+  Result := TJsonASTDeclaration;
+end;
+
 procedure TASTDeclaration.Decl2Str(ABuilder: TStringBuilder; ANestedLevel: Integer; AAppendName: Boolean);
 begin
   ABuilder.Append(format('<unknown %s>', [ClassName]));
@@ -818,6 +841,16 @@ begin
   finally
     LBuilder.Free;
   end;
+end;
+
+function TASTDeclaration.GetASTKind: string;
+begin
+  Result := '<unknown>';
+end;
+
+function TASTDeclaration.GetASTHandle: TASTHandle;
+begin
+  Result := TASTHandle(Self);
 end;
 
 function TASTDeclaration.GetDisplayName: string;
@@ -863,6 +896,11 @@ end;
 procedure TASTDeclaration.SetSrcPos(const AValue: TTextPosition);
 begin
   fID.TextPosition := AValue;
+end;
+
+function TASTDeclaration.ToJson: TJsonASTDeclaration;
+begin
+  Result := nil;
 end;
 
 { TASTKWAssign }
@@ -1245,9 +1283,19 @@ begin
   fFileName := FileName;
 end;
 
+function TASTModule.GetFileName: string;
+begin
+  Result := fFileName;
+end;
+
 function TASTModule.GetModuleName: string;
 begin
   Result := ExtractFileName(fFileName);
+end;
+
+function TASTModule.GetModulePath: string;
+begin
+  Result := ExtractFilePath(fFileName);
 end;
 
 function TASTModule.GetTotalLinesParsed: Integer;
@@ -1255,18 +1303,46 @@ begin
   Result := fTotalLinesParsed;
 end;
 
-procedure TASTModule.Progress(StatusClass: TASTProcessStatusClass);
+procedure TASTModule.Progress(StatusClass: TASTProcessStatusClass; AElapsedTime: Int64);
 var
   Event: TASTProgressEvent;
 begin
   Event := fProject.OnProgress;
   if Assigned(Event) then
-    Event(Self, StatusClass);
+    Event(Self, StatusClass, AElapsedTime);
+end;
+
+procedure TASTModule.PutError(const AMessage: string; const AParams: array of const;
+  const ATextPosition: TTextPosition; ACritical: Boolean);
+
+  procedure DebugBreak;
+  asm
+    int 3;
+  end;
+
+begin
+  if Project.StopCompileIfError or ACritical then
+    AbortWork(AMessage, AParams, ATextPosition)
+  else begin
+    Project.PutMessage(Self, cmtError, Format(AMessage, AParams), ATextPosition);
+    if (BreakpointOnError) and (System.DebugHook > 0) then
+      DebugBreak;
+  end;
+end;
+
+procedure TASTModule.PutError(const AMessage: string; const ATextPosition: TTextPosition; ACritical: Boolean);
+begin
+  PutError(AMessage, {AParams:} [], ATextPosition, ACritical);
 end;
 
 procedure TASTModule.SetFileName(const Value: string);
 begin
   fFileName := Value;
+end;
+
+function TASTModule.ToJson: TJsonASTDeclaration;
+begin
+  Result := nil;
 end;
 
 { TASTProject }
@@ -1277,6 +1353,16 @@ begin
     fOnConsoleProc(Module, Line, Message);
 end;
 
+constructor TASTProject.Create(const AName: string);
+begin
+  fName := AName;
+end;
+
+function TASTProject.GetName: string;
+begin
+  Result := fName;
+end;
+
 function TASTProject.GetOnConsoleWrite: TASTRrojectConsoleWriteEvent;
 begin
   Result := fOnConsoleProc;
@@ -1285,6 +1371,11 @@ end;
 function TASTProject.GetOnProgress: TASTProgressEvent;
 begin
   Result := fOnProgress;
+end;
+
+function TASTProject.GetStopCompileIfError: Boolean;
+begin
+  Result := fStopIfErrors;
 end;
 
 function TASTProject.GetTotalLinesParsed: Integer;
@@ -1302,6 +1393,22 @@ begin
   Result := 0;
 end;
 
+procedure TASTProject.PutMessage(const AMessage: IASTParserMessage);
+begin
+  // do nothing
+end;
+
+procedure TASTProject.PutMessage(const AModule: IASTModule; AMsgType: TCompilerMessageType;
+  const AMessage: string; const ATextPostition: TTextPosition; ACritical: Boolean);
+begin
+  // do nothing
+end;
+
+procedure TASTProject.SetName(const Value: string);
+begin
+  fName := Value;
+end;
+
 procedure TASTProject.SetOnConsoleWrite(const Value: TASTRrojectConsoleWriteEvent);
 begin
   fOnConsoleProc := Value;
@@ -1310,6 +1417,16 @@ end;
 procedure TASTProject.SetOnProgress(const Value: TASTProgressEvent);
 begin
   fOnProgress := Value;
+end;
+
+procedure TASTProject.SetStopCompileIfError(const Value: Boolean);
+begin
+ fStopIfErrors := Value;
+end;
+
+function TASTProject.ToJson: TJsonASTDeclaration;
+begin
+  Result := nil;
 end;
 
 { TASTIDList }

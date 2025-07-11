@@ -1,11 +1,10 @@
 ﻿unit AST.Parser.Utils;
 
-{$I AST.Parser.Defines.inc}
-
 interface
 
-uses SysUtils, StrUtils, DateUtils, Classes, Math, AST.Delphi.DataTypes, Types, AVL, TypInfo, AnsiStrings,
-     {$IFNDEF FPC}IOUtils{$ELSE}FileUtil{$ENDIF};
+uses System.SysUtils, System.StrUtils, System.DateUtils, System.Classes, System.Math, System.Types,
+     System.TypInfo, System.AnsiStrings, System.IOUtils,
+     AVL, AST.Delphi.DataTypes;
 
 const
   MinInt8 = -128;
@@ -22,10 +21,10 @@ const
   MaxUInt32 = 4294967295;
   MaxUInt64: UInt64 = UInt64($FFFFFFFFFFFFFFFF);
 
-  MinNativeInt = {$IFDEF PTR_SIZE4} MinInt32 {$ELSE} MinInt64 {$ENDIF};
-  MaxNativeInt = {$IFDEF PTR_SIZE4} MaxInt32 {$ELSE} MaxInt64 {$ENDIF};
+  MinNativeInt = {$IFDEF CPUX86} MinInt32 {$ELSE} MinInt64 {$ENDIF};
+  MaxNativeInt = {$IFDEF CPUX86} MaxInt32 {$ELSE} MaxInt64 {$ENDIF};
   MinNativeUInt = 0;
-  MaxNativeUInt: NativeUInt = {$IFDEF PTR_SIZE4} MaxUInt32 {$ELSE} UInt64($FFFFFFFFFFFFFFFF) {$ENDIF};
+  MaxNativeUInt: NativeUInt = {$IFDEF CPUX86} MaxUInt32 {$ELSE} UInt64($FFFFFFFFFFFFFFFF) {$ENDIF};
 
 
   MaxFloat32 = MaxSingle;
@@ -41,11 +40,6 @@ type
 
   TIntArray = TIntegerDynArray;
   TStrArray = array of string;
-
-  {$IFDEF NEXTGEN}
-  AnsiString = UTF8String;
-  AnsiChar = System.UTF8Char;
-  {$ENDIF}
 
   {$IFDEF FPC}TArray<T> = array of T;{$ENDIF}
 
@@ -100,6 +94,7 @@ type
   TPooledObject = class(TNoRefCountObject)
   private
     FPrevObect: TPooledObject;
+    FDisposed: Boolean;
     class var FLastObject: TPooledObject;
     class var FCount: Integer;
     class procedure Initialize;
@@ -107,6 +102,7 @@ type
     procedure CreateFromPool; inline;
   public
     class procedure ClearPool;
+    destructor Destroy; override;
   end;
 
   TRTTICharset = (
@@ -177,6 +173,16 @@ type
   TEnum<T> = record
     class function Name(const Value: T): string; static; stdcall;
   end;
+
+  TTickCounter = class
+  private
+    class var FTickRate: Int64;
+  public
+    class constructor ClassCreate;
+    class function GetTicks: Int64; inline;
+  end;
+
+function GetElapsedStr(const AElapsedTicks: Int64): string;
 
 function StringSegCount(const Str: string; const Separator: string = ','): Integer;
 function StringSegment(const Str: string; Idx: Integer; const Separator: string = ','): string;
@@ -278,7 +284,7 @@ begin
   end;
 
   if Result and (StdErrorFile <> '') then
-    SysUtils.DeleteFile(StdErrorFile);
+    System.SysUtils.DeleteFile(StdErrorFile);
 end;
 
 {function TryStrToGUID(const S: string; out GUID: TGUID): Boolean;
@@ -635,7 +641,7 @@ end;
 
 function AStrCSCompare(const Key1, Key2: AnsiString): NativeInt; // case sencitive
 begin
-  Result := AnsiStrings.AnsiCompareStr(Key1, Key2);
+  Result := System.AnsiStrings.AnsiCompareStr(Key1, Key2);
 end;
 
 function OpenArrayToDynamic(const Value: array of string): TStringDynArray;
@@ -703,13 +709,23 @@ end;
 
 function GetValueDataType(const Value: Int64): TDataTypeID;
 begin
+  // Delphi treats untyped int constat as Int64 or Integer
   if Value > MaxUInt32 then
     Result := dtInt64
   else
   if Value > MaxInt32 then
     Result := dtUInt32
   else
-    Result := dtInt32;
+ // if Value > MaxUInt16 then
+    Result := dtInt32
+{  else
+  if Value > MaxInt16 then
+    Result := dtUInt16
+  else
+  if Value > MaxUInt8 then
+    Result := dtInt16
+  else
+    Result := dtUInt8;}
 end;
 
 function GetValueDataType(const Value: Extended): TDataTypeID;
@@ -1278,9 +1294,16 @@ end;
 
 procedure TPooledObject.CreateFromPool;
 begin
+  FDisposed := False;
   FPrevObect := FLastObject;
   FLastObject := Self;
   Inc(FCount);
+end;
+
+destructor TPooledObject.Destroy;
+begin
+  FDisposed := True;
+  inherited;
 end;
 
 class procedure TPooledObject.ClearPool;
@@ -1293,6 +1316,8 @@ begin
     Obj := Obj.FPrevObect;
     try
       dec(FCount);
+      if Tmp.FDisposed then
+        raise Exception.CreateFmt('Class %s already disposed', [Tmp.ClassNAme]);
       Tmp.Free;
     except
     end;
@@ -1335,7 +1360,7 @@ var
   TI: PtypeInfo;
 begin
   TI := TypeInfo(T);
-  Result := TypInfo.GetEnumName(TI, PInteger(@Value)^);
+  Result := GetEnumName(TI, PInteger(@Value)^);
 end;
 
 { TObjectsPool }
@@ -1447,6 +1472,37 @@ end;
 procedure TSimpleStack<T>.SetTop(const Value: T);
 begin
   fItems[fCount - 1] := Value;
+end;
+
+{ TTickCounter }
+
+class constructor TTickCounter.ClassCreate;
+begin
+  QueryPerformanceFrequency(FTickRate);
+end;
+
+class function TTickCounter.GetTicks: Int64;
+begin
+  QueryPerformanceCounter(Result);
+end;
+
+function GetElapsedStr(const AElapsedTicks: Int64): string;
+begin
+  var LElapsedMs := (AElapsedTicks * (1000000 / TTickCounter.FTickRate)) / 1000;
+
+  if LElapsedMs < 1 then
+    Result := FormatFloat('0.000', LElapsedMs) + 'ms'
+  else
+  if LElapsedMs < 1000 then
+    Result := FormatFloat('0.00', LElapsedMs) + 'ms'
+  else
+  if LElapsedMs < 10_000 then
+    Result := FormatFloat('0.00', LElapsedMs / 1000) + 's'
+  else
+  if LElapsedMs < 60_000 then
+    Result := FormatFloat('0.0', LElapsedMs / 1000) + 's'
+  else
+    Result := Round(LElapsedMs / 1000).ToString + 's';
 end;
 
 initialization

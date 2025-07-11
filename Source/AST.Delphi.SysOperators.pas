@@ -28,7 +28,9 @@ type
   end;
 
   TSysOpBinary = class(TSysOperator)
-    function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; virtual; abstract;
+  public
+    function Check(const ALeft, ARight: TIDType): Boolean; virtual;
+    function Match(const SContext: TSContext; const ALeft, ARight: TIDExpression): TIDExpression; virtual;
   end;
 
 
@@ -352,18 +354,6 @@ type
     function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
   end;
 
-  {explicit Variant -> Any}
-  TSysExplicitVariantToAny = class(TSysOpExplisit)
-  public
-    function Check(const SContext: TSContext; const Src: TIDType; const Dst: TIDType): Boolean; override;
-  end;
-
-  {explicit Variant <- Any}
-  TSysExplicitVariantFromAny = class(TSysOpExplisit)
-  public
-    function Check(const SContext: TSContext; const ASrc: TIDType; const ADst: TIDType): Boolean; override;
-  end;
-
   {explicit Class -> Any}
   TSysExplicitClassToAny = class(TSysExplicitRefTypeToAny)
   public
@@ -425,18 +415,6 @@ type
 
   {operator Set <> Set}
   TSys_NotEqual_Set = class(TSysOpBinary)
-  public
-    function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
-  end;
-
-  {operator [...] = [...]}
-  TSys_Equal_DynArray = class(TSysOpBinary)
-  public
-    function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
-  end;
-
-  {operator [...] + [...]}
-  TSys_Add_DynArray = class(TSysOpBinary)
   public
     function Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression; override;
   end;
@@ -621,7 +599,7 @@ function TSysImplicitVariantToAny.Check(const SContext: TSContext; const Src: TI
 begin
   if (Dst.DataTypeID in [dtInt8, dtInt16, dtInt32, dtInt64, dtUInt8, dtUInt16, dtUInt32, dtUInt64, dtBoolean,
                          dtFloat32, dtFloat64, dtFloat80, dtCurrency, dtNativeInt, dtNativeUInt, dtChar, dtAnsiChar,
-                         dtString, dtAnsiString, dtWideString, dtVariant, dtInterface]) or (Dst = SYSUnit._TVarData) then
+                         dtString, dtAnsiString, dtWideString, dtVariant, dtInterface]) {or (Dst = SYSUnit._TVarData)} then
     Result := Self
   else
     Result := nil;
@@ -647,6 +625,7 @@ end;
 function TSysImplicitTProcFromAny.Check(const SContext: TSContext; const Src: TIDExpression;
   const Dst: TIDType): TIDDeclaration;
 begin
+  var LSrcDataType := Src.ActualDataType;
   var LDstProcType := Dst as TIDProcType;
 
   if Src.ItemType = itProcedure then
@@ -661,9 +640,9 @@ begin
       LSrcProc := LSrcProc.PrevOverload;
     until not Assigned(LSrcProc);
   end else
-  if Src.DataTypeID = dtProcType then
+  if LSrcDataType.DataTypeID = dtProcType then
   begin
-    var LSrcProcType := Src.DataType as TIDProcType;
+    var LSrcProcType := LSrcDataType as TIDProcType;
     if TASTDelphiUnit.StrictMatchProcSingnatures(LSrcProcType.Params,
                                                  LDstProcType.Params,
                                                  LSrcProcType.ResultType,
@@ -671,7 +650,7 @@ begin
       Exit(Dst);
   end else
   begin
-    if (Src.DataTypeID = dtPointer) and LDstProcType.IsStatic then
+    if (LSrcDataType.DataTypeID = dtPointer) and LDstProcType.IsStatic then
       Exit(Dst);
   end;
 
@@ -903,12 +882,12 @@ begin
     var ADT := TIDArray(Left.DataType);
     if ADT.ElementDataType = SYSUnit._WideChar then
     begin
-      Result := TIDExpression.Create(GetTMPVar(SYSUnit._WideChar.DefaultReference));
+      Result := TIDExpression.Create(GetTMPVar(SContext.Scope, SYSUnit._WideChar.DefaultReference));
       Exit;
     end;
     if ADT.ElementDataType = SYSUnit._AnsiChar then
     begin
-      Result := TIDExpression.Create(GetTMPVar(SYSUnit._AnsiChar.DefaultReference));
+      Result := TIDExpression.Create(GetTMPVar(SContext.Scope, SYSUnit._AnsiChar.DefaultReference));
       Exit;
     end;
   end;
@@ -1112,31 +1091,6 @@ begin
   Result := SYSUnit._TrueExpression;
 end;
 
-{ TSys_Equal_DynArray }
-
-function TSys_Equal_DynArray.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
-begin
-  // todo:
-  Result := SYSUnit._TrueExpression;
-end;
-
-{ TSys_Add_DynArray }
-
-function TSys_Add_DynArray.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
-begin
-  var LLeftDataType := Left.ActualDataType;
-  var LRightDataType := Right.ActualDataType;
-  if (LLeftDataType is TIDDynArray) and (LLeftDataType is TIDDynArray) and
-     (TIDDynArray(LLeftDataType).ElementDataType.ActualDataType =
-      TIDDynArray(LRightDataType).ElementDataType.ActualDataType) then
-  begin
-    var LResult := SContext.Proc.GetTMPVar(LLeftDataType);
-    // todo: implement arrays concatination
-    Result := TIDExpression.Create(LResult, Left.TextPosition);
-  end else
-    Result := nil;
-end;
-
 { TSysImplicitTVarRecToAny }
 
 function TSysImplicitTVarRecToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
@@ -1207,28 +1161,6 @@ begin
   Result := (Dst.DataTypeID in [dtInt32, dtPointer, dtClass]) or (Src = SysUnit._Untyped);
 end;
 
-{ TSysExplicitVariantToAny }
-
-function TSysExplicitVariantToAny.Check(const SContext: TSContext; const Src, Dst: TIDType): Boolean;
-begin
-  Result := (Dst.DataTypeID in [dtInt8, dtInt16, dtInt32, dtInt64, dtUInt8, dtUInt16, dtUInt32, dtUInt64, dtBoolean,
-                                dtFloat32, dtFloat64, dtNativeInt, dtNativeUInt, dtChar, dtAnsiChar,
-                                dtString, dtAnsiString, dtWideString, dtVariant]) or (Dst = SYSUnit._TVarData);
-end;
-
-{ TSysExplicitVariantFromAny }
-
-function TSysExplicitVariantFromAny.Check(const SContext: TSContext; const ASrc, ADst: TIDType): Boolean;
-begin
-  var LRecordWithTheSameSize := (ASrc.DataTypeID in [dtRecord, dtStaticArray]) and
-                                (ASrc.DataSize = Package.VariantSize);
-
-  Result := LRecordWithTheSameSize or
-            ASrc.IsOrdinal or
-            ASrc.IsFloat or
-            (ASrc.DataTypeID in [dtString, dtAnsiString, dtWideString, dtDynArray]);
-end;
-
 { TSys_Equal_NullPtr }
 
 function TSys_Equal_NullPtr.Match(const SContext: TSContext; const Left, Right: TIDExpression): TIDExpression;
@@ -1243,6 +1175,21 @@ function TSys_NotEqual_NullPtr.Match(const SContext: TSContext; const Left, Righ
 begin
   // todo:
   Result := SYSUnit._TrueExpression;
+end;
+
+{ TSysOpBinary }
+
+function TSysOpBinary.Check(const ALeft, ARight: TIDType): Boolean;
+begin
+  Result := True;
+end;
+
+function TSysOpBinary.Match(const SContext: TSContext; const ALeft, ARight: TIDExpression): TIDExpression;
+begin
+  if Check(ALeft.DataType, ARight.DataType) then
+    Result := ALeft
+  else
+    Result := nil;
 end;
 
 end.

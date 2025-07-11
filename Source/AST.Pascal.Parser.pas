@@ -5,13 +5,12 @@ unit AST.Pascal.Parser;
 
 interface
 
-{$I AST.Parser.Defines.inc}
-
 uses SysUtils, Math, Classes, StrUtils, Types, IOUtils, Generics.Collections,
      AST.Lexer.Delphi,
      AST.Delphi.Classes,
      AST.Delphi.DataTypes,
      AST.Lexer,
+     AST.JsonSchema,
      AST.Delphi.Operators,
      AST.Parser.Utils,
      AST.Parser.Messages,
@@ -87,7 +86,7 @@ type
 
   TASTProcMachArray = array of TASTProcMatchItem;
 
-  TPascalUnit = class(TASTModule)
+  TPascalUnit = class(TASTModule, IASTPascalUnit)
   type
     TVarModifyPlace = (vmpAssignment, vmpPassArgument);
     TIdentifiersPool = TPool<TIdentifier>;
@@ -103,26 +102,30 @@ type
     fConsts: TConstSpace;              // список нетривиальных констант (массивы, структуры)
     function GetMessagesText: string;
     function GetProject: IASTPascalProject;
+    function GetSysUnit: IASTPascalUnit; inline;
   protected
     fCompiled: TCompilerResult;
     fUnitState: TUnitState;
     fUnitName: TIdentifier;            // the Unit declaration name
-    fSysUnit: TASTModule;
     fProcMatches: TASTProcMachArray;
+    FMaxHandle: Integer;
+    fDefines: TDefines;                // unit conditional defines
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
-    function FindPublicDecl(const Name: string): TIDDeclaration;
-    function GetPublicClass(const Name: string): TIDClass;
-    function GetPublicType(const Name: string): TIDType;
     function GetModuleName: string; override;
+    function GetCurrentFileName: string; override;
     procedure SetUnitName(const Name: string);
   public
+    function FindPublicDecl(const Name: string): TIDDeclaration;
+    function GetPublicClass(const Name: string): TIDClass;
+    function GetPublicInterface(const AName: string): TIDInterface;
+    function GetPublicType(const Name: string): TIDType;
     //======================================================================================================================================
     procedure AddType(const Decl: TIDType); inline;
     procedure AddConstant(const Decl: TIDConstant); inline;
     property Lexer: TDelphiLexer read fLexer;
-    property SysUnit: TASTModule read fSysUnit;
+    property SysUnit: IASTPascalUnit read GetSysUnit;
     ////////////////////////////////////////////////////////////////////////////
-    constructor Create(const Project: IASTProject; const FileName: string; const Source: string = ''); override;
+    constructor Create(const AProject: IASTProject; const AFileName: string; const ASource: string = ''); override;
     constructor CreateFromFile(const AProject: IASTProject; const AFileName: string); override;
     destructor Destroy; override;
     ////////////////////////////////////////////////////////////////////////////
@@ -132,12 +135,14 @@ type
     procedure SaveBodyToStream(Stream: TStream);   // сохраняет тела всех глобальных процедур модуля
     procedure SaveTypesToStream(Stream: TStream);  // сохраняет все типы модуля
 
-    function Compile(ACompileIntfOnly: Boolean; RunPostCompile: Boolean = True): TCompilerResult; virtual;
-
+    function Compile(ACompileIntfOnly: Boolean; RunPostCompile: Boolean = True): TCompilerResult; override;
     function CompileIntfOnly: TCompilerResult; virtual;
-
-    function UsedUnit(const UnitName: string): Boolean;
+    function UsedUnit(const AUnitName: string): Boolean;
     function GetDefinesAsString: string;
+    function Defined(const ADefine: string): Boolean;
+    function ToJson: TJsonASTDeclaration; override;
+    function Lexer_TokenName(AToken: Integer): string; override;
+
     property _ID: TIdentifier read FUnitName;
     property UnitID: Integer read FID write FID;
     property Messages: ICompilerMessages read FMessages;
@@ -149,7 +154,6 @@ type
 
     property Compiled: TCompilerResult read FCompiled;
     property UnitState: TUnitState read fUnitState;
-
     property Project: IASTPascalProject read GetProject;
   end;
 
@@ -168,20 +172,47 @@ begin
   FUnitName.Name := Name;
 end;
 
+function TPascalUnit.ToJson: TJsonASTDeclaration;
+begin
+  var LObject := TJsonASTUnit.Create;
+  LObject.name := Name;
+  LObject.kind := 'unit';
+  LObject.fileName := FileName;
+
+  SetLength(LObject.intfDecls, IntfScope.Count);
+  for var LIndex := 0 to IntfScope.Count - 1 do
+  begin
+    var LDecl := IntfScope.Items[LIndex];
+    if not (LDecl is TIDUnit) or (TIDUnit(LDecl).UseModule <> Self) then
+    begin
+      var LJson := LDecl.ToJson;
+      LObject.intfDecls[LIndex] := LJson;
+    end;
+  end;
+
+  SetLength(LObject.implDecls, ImplScope.Count);
+  for var LIndex := 0 to ImplScope.Count - 1 do
+  begin
+    var LDecl := ImplScope.Items[LIndex];
+    var LJson := LDecl.ToJson;
+    LObject.implDecls[LIndex] := LJson;
+  end;
+
+  Result := LObject;
+end;
+
 function TPascalUnit.Compile(ACompileIntfOnly: Boolean; RunPostCompile: Boolean = True): TCompilerResult;
 begin
 
   Result := TCompilerResult.CompileInProgress;
   FCompiled := Result;
 
-  fSysUnit := (Project as IASTPascalProject).SysUnit;
-
   // add system unit implicitly
-  if Assigned(fSysUnit) and (Self <> fSysUnit) then
+  if Assigned(SysUnit) and (Self <> TObject(SysUnit)) then
   begin
-    fIntfImportedUnits.AddObject('system', fSysUnit);
+    fIntfImportedUnits.AddObject('system', TObject(SysUnit));
     // add system unit scope as joint
-    fIntfScope.AddScope(TPascalUnit(fSysUnit).IntfScope);
+    fIntfScope.AddScope(TPascalUnit(SysUnit).IntfScope);
   end;
 end;
 
@@ -190,11 +221,15 @@ begin
   Result := TCompilerResult.CompileFail;
 end;
 
-constructor TPascalUnit.Create(const Project: IASTProject; const FileName: string; const Source: string = '');
+constructor TPascalUnit.Create(const AProject: IASTProject; const AFileName: string; const ASource: string = '');
 begin
-  inherited Create(Project, FileName, Source);
-  fSysUnit := (Project as IASTPascalProject).SysUnit;
-  fLexer := TDelphiLexer.Create(Source);
+  var LSource := ASource;
+  if (ASource = '') and FileExists(AFileName) then
+    LSource := TFile.ReadAllText(AFileName);
+
+  inherited Create(AProject, AFileName, LSource);
+
+  fLexer := TDelphiLexer.Create(LSource);
   FMessages := TCompilerMessages.Create;
   //FVisibility := vPublic;
 
@@ -232,8 +267,18 @@ begin
   end;
 end;
 
+function TPascalUnit.Defined(const ADefine: string): Boolean;
+begin
+  // 1. search in the module itself
+  Result := FDefines.IndexOf(ADefine) > -1;
+  // 2. serach in the project
+  if not Result then
+    Result := Project.Defines.IndexOf(ADefine) > -1;
+end;
+
 destructor TPascalUnit.Destroy;
 begin
+  fDefines.Free;
   FIntfScope.Free;
   FImplScope.Free;
   fLexer.Free;
@@ -247,15 +292,15 @@ begin
   Result := fIntfScope.FindID(Name);
 end;
 
-function TPascalUnit.UsedUnit(const UnitName: string): Boolean;
+function TPascalUnit.UsedUnit(const AUnitName: string): Boolean;
 var
   i: Integer;
 begin
-  i := FIntfImportedUnits.IndexOf(UnitName);
+  i := FIntfImportedUnits.IndexOf(AUnitName);
   if i > 0 then
     Exit(True);
 
-  i := FImplImportedUnits.IndexOf(UnitName);
+  i := FImplImportedUnits.IndexOf(AUnitName);
   if i > 0 then
     Exit(True)
   else
@@ -312,12 +357,27 @@ begin
   Result := Res as TIDClass;
 end;
 
+function TPascalUnit.GetPublicInterface(const AName: string): TIDInterface;
+begin
+  Result := FindPublicDecl(AName) as TIDInterface;
+end;
+
 function TPascalUnit.GetPublicType(const Name: string): TIDType;
 var
   Res: TIDDeclaration;
 begin
   Res := FindPublicDecl(Name);
   Result := Res as TIDType;
+end;
+
+function TPascalUnit.GetSysUnit: IASTPascalUnit;
+begin
+  Result := Project.SysUnit;
+end;
+
+function TPascalUnit.Lexer_TokenName(AToken: Integer): string;
+begin
+  Result := Lexer.TokenLexem(TTokenID(AToken));
 end;
 
 {parser methods}
@@ -380,6 +440,13 @@ end;
 function TPascalUnit.GetDefinesAsString: string;
 begin
 //  Result := FDefines.Text;
+end;
+
+function TPascalUnit.GetCurrentFileName: string;
+begin
+  Result := fLexer.IncludeFileName;
+  if Result = '' then
+    Result := FileName;
 end;
 
 initialization

@@ -2,9 +2,10 @@
 
 interface
 
-{$I AST.Parser.Defines.inc}
-
-uses AST.Lexer, SysUtils, StrUtils, Types, Classes, AST.Parser.Errors;
+uses
+  System.SysUtils, System.StrUtils, System.Types, System.Classes, System.Generics.Collections,
+  AST.Lexer,
+  AST.Parser.Errors;
 
 type
 
@@ -56,10 +57,12 @@ type
     tokenD_abstract,                // directive: abstract
     tokenD_aling,                   // directive: align
     token_asm,                      // keyword: asm
+    tokenD_assembler,               // directive: assembler
     tokenD_stdcall  {=40},          // directive: stdcall
     tokenD_fastcall,                // directive: fastcall
     tokenD_cdecl,                   // directive: cdecl
     tokenD_safecall,                // directive: safecall
+    tokenD_register,                // directive: register
     token_unit,                     // keyword: unit
     token_uses,                     // keyword: uses
 
@@ -74,7 +77,7 @@ type
     token_dispinterface,            // keyword: dispinterface
     tokenD_dispid,                  // directive: dispid
     token_implementation,           // keyword: implementation
-    token_implement,                // keyword: implementation
+    tokenD_implements,              // directive: implements
     token_initialization,           // keyword: initialization
     token_finalization,             // keyword: finalization
     token_begin,                    // keyword: begin
@@ -121,7 +124,7 @@ type
     token_to,                       // keyword: to
     token_downto,                   // keyword: downto
     token_do,                       // keyword: do
-    token_deprecated,               // keyword: depricated
+    tokenD_deprecated,              // keyword: depricated
     token_while,                    // keyword: while
     tokenD_reference,               // directive: reference
     token_repeat,                   // keyword: repeat
@@ -168,7 +171,8 @@ type
     token_cond_else,                // {$ELSE...
     token_cond_else_if,             // {$ELSEIF (condition)}
     token_cond_end,                 // {$END... / {$IFEND... / {$ENDIF...
-    token_cond_include,             // {$INCLUDE
+    token_cond_include,             // {$INCLUDE <filename>}
+    token_cond_include_short,       // {$I <filename>}
     token_cond_undefine,            // {$UNDEFINE
     token_cond_ifdef,               // {$IFDEF
     token_cond_ifndef,              // {$IFNDEF
@@ -182,11 +186,17 @@ type
   TDelphiLexer = class(TGenericLexer)
   private
     fOriginalToken: string;
+    fAllTokens: array [TTokenID] of string;
+    fIncludeFilesStack: TStack<TParserPosition>;
+    fIncludeFileName: string;
+    function GetIncludeFileName: string;
   protected
     procedure ParseChainedString;
     procedure ParseCharCodeSymbol;
+    procedure PopIncludeFile;
   public
     constructor Create(const Source: string); override;
+    destructor Destroy; override;
     function NextToken: TTokenID;
     function TokenLexem(TokenID: TTokenID): string;
     procedure RegisterToken(const Token: string; TokenID: TTokenID; const TokenCaption:
@@ -198,7 +208,10 @@ type
     procedure MatchToken(ActualToken, ExpectedToken: TTokenID); inline;
     procedure MatchNextToken(ExpectedToken: TTokenID); inline;
     function TokenCanBeID(TokenID: TTokenID): Boolean; inline;
+    function TokenText(ATokenID: Integer): string; override;
     property OriginalToken: string read fOriginalToken;
+    property IncludeFileName: string read GetIncludeFileName;
+    procedure PushIncludeFile(const ASource, AFileName: string);
   end;
 
 
@@ -234,6 +247,20 @@ begin
     AbortWork(sExpected, [UpperCase(TokenLexem(ExpectedToken))], PrevPosition);
 end;
 
+destructor TDelphiLexer.Destroy;
+begin
+  fIncludeFilesStack.Free;
+  inherited;
+end;
+
+function TDelphiLexer.GetIncludeFileName: string;
+begin
+  if fIncludeFilesStack.Count > 0 then
+    Result := fIncludeFileName
+  else
+    Result := '';
+end;
+
 procedure TDelphiLexer.MatchNextToken(ExpectedToken: TTokenID);
 begin
   if TTokenID(GetNextTokenId()) <> ExpectedToken then
@@ -265,23 +292,33 @@ begin
     token_ampersand: begin
       if not GetNextCharIsSeparator then
       begin
-        Result := TTokenID(GetNextTokenId());
-        fOriginalToken := TokenLexem(Result);
-        fCurrentToken := fOriginalToken;
+        // read the escaped token
+        GetNextTokenId();
         fCurrentTokenID := ord(token_identifier);
         fIdentifireType := itIdentifier;
         Result := token_identifier;
       end;
     end;
+    token_eof: begin
+      if fIncludeFilesStack.Count > 0 then
+      begin
+        PopIncludeFile;
+        Result := NextToken;
+      end;
+    end;
   else
     fOriginalToken := CurrentToken;
   end;
-  if CurToken.TokenID = ord(token_quote) then
-    ParseChainedString()
-  else
-  if CurToken.TokenID = ord(token_numbersign) then
+
+  if Assigned(CurToken) then
   begin
-    ParseCharCodeSymbol();
+    if CurToken.TokenID = ord(token_quote) then
+      ParseChainedString()
+    else
+    if CurToken.TokenID = ord(token_numbersign) then
+    begin
+      ParseCharCodeSymbol();
+    end;
   end;
 end;
 
@@ -325,14 +362,33 @@ begin
   end;
 end;
 
+procedure TDelphiLexer.PopIncludeFile;
+begin
+  Assert(fIncludeFilesStack.Count > 0);
+  LoadState(fIncludeFilesStack.Pop);
+end;
+
+procedure TDelphiLexer.PushIncludeFile(const ASource, AFileName: string);
+var
+  LSavedState: TParserPosition;
+begin
+  SaveState(LSavedState);
+  fIncludeFilesStack.Push(LSavedState);
+  fIncludeFileName := AFileName;
+  Source := ASource;
+  First;
+end;
+
 procedure TDelphiLexer.RegisterToken(const Token: string; TokenID: TTokenID; const TokenCaption: string; TokenType: TTokenType);
 begin
   inherited RegisterToken(Token, Integer(TokenID), TokenType, tcStrongKeyword, TokenCaption);
+  fAllTokens[TokenID] := Token;
 end;
 
 procedure TDelphiLexer.RegisterToken(const Token: string; TokenID: TTokenID; Priority: TTokenClass);
 begin
   inherited RegisterToken(Token, Integer(TokenID), ttToken, Priority, Token);
+  fAllTokens[TokenID] := Token;
 end;
 
 function TDelphiLexer.TokenLexem(TokenID: TTokenID): string;
@@ -340,9 +396,15 @@ begin
   Result := inherited TokenLexem(Integer(TokenID));
 end;
 
+function TDelphiLexer.TokenText(ATokenID: Integer): string;
+begin
+  Result := fAllTokens[TTokenID(ATokenID)];
+end;
+
 constructor TDelphiLexer.Create(const Source: string);
 begin
   inherited Create(Source);
+  fIncludeFilesStack := TStack<TParserPosition>.Create;
   IdentifireID := ord(token_identifier);
   EofID := ord(token_eof);
 //  AmbiguousId := ord(token_id_or_keyword);
@@ -393,6 +455,7 @@ begin
   RegisterToken('align', tokenD_aling, tcWeakKeyword);
   RegisterToken('as', token_as);
   RegisterToken('asm', token_asm);
+  RegisterToken('assembler', tokenD_assembler, tcWeakKeyword);
   RegisterToken('and', token_and);
   RegisterToken('array', token_array);
   RegisterToken('begin', token_begin);
@@ -405,7 +468,7 @@ begin
   RegisterToken('downto', token_downto);
   RegisterToken('div', token_div);
   RegisterToken('destructor', token_destructor);
-  RegisterToken('deprecated', token_deprecated);
+  RegisterToken('deprecated', tokenD_deprecated, tcWeakKeyword);
   RegisterToken('default', tokenD_default, tcWeakKeyword);
   RegisterToken('nodefault', tokenD_nodefault, tcWeakKeyword);
   RegisterToken('dynamic', tokenD_dynamic, tcWeakKeyword);
@@ -435,7 +498,7 @@ begin
   RegisterToken('inline', token_inline);
   RegisterToken('initialization', token_initialization);
   RegisterToken('implementation', token_Implementation);
-  RegisterToken('implement', token_implement);
+  RegisterToken('implements', tokenD_implements, tcWeakKeyword);
   RegisterToken('library', token_library);
   RegisterToken('label', token_label);
   RegisterToken('mod', token_mod);
@@ -466,6 +529,7 @@ begin
   RegisterToken('readonly', tokenD_readonly, tcWeakKeyword);
   RegisterToken('record', token_record);
   RegisterToken('reference', tokenD_reference, tcWeakKeyword);
+  RegisterToken('register', tokenD_register, tcWeakKeyword);
   RegisterToken('repeat', token_repeat);
   RegisterToken('resourcestring', token_resourcestring);
   RegisterToken('reintroduce', tokenD_reintroduce, tcWeakKeyword);
@@ -510,7 +574,7 @@ begin
   RegisterToken('{$IFOPT', token_cond_ifopt);
   RegisterToken('{$MESSAGE', token_cond_message);
   RegisterToken('{$INCLUDE', token_cond_include);
-  RegisterToken('{$I', token_cond_include);
+  RegisterToken('{$I', token_cond_include_short); // WARNING, "I" is ambiguous - can be INCLUDE or IO CHECK OPTION
   RegisterToken('{$', token_cond_any);
 end;
 

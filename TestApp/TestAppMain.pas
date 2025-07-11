@@ -2,14 +2,21 @@ unit TestAppMain;
 
 interface
 
-{$I ../Source/AST.Parser.Defines.inc}
-
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, System.Generics.Collections, AST.Pascal.Project,
-  AST.Pascal.Parser, AST.Delphi.Classes, SynEdit, SynEditHighlighter, SynEditCodeFolding, SynHighlighterPas, AST.Delphi.Project,
-  Vcl.ComCtrls, System.Types, Vcl.ExtCtrls, AST.Intf, AST.Parser.ProcessStatuses, Vcl.CheckLst, SynEditMiscClasses,
-  SynEditSearch, AST.Parser.Messages, System.UITypes, System.Actions, Vcl.ActnList;   // system
+  System.SysUtils, System.Variants, System.Classes, System.JSON, System.Generics.Collections, Winapi.Windows,
+  Winapi.Messages, Vcl.Graphics, Vcl.ComCtrls, System.Types, Vcl.ExtCtrls, Vcl.CheckLst, System.Actions, Vcl.ActnList,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.Menus, System.ImageList, Vcl.ImgList, System.UITypes,
+  SynEdit, SynEditMiscClasses, SynEditSearch, SynEditHighlighter, SynEditCodeFolding, SynHighlighterPas, SynHighlighterJSON,
+  VirtualTrees, VirtualTrees.Types, VirtualTrees.Classes,
+  AST.Intf,
+  AST.Classes,
+  AST.Pascal.Project,
+  AST.Delphi.Project,
+  AST.Delphi.Classes,
+  AST.Pascal.Intf,
+  AST.Pascal.Parser,
+  AST.Parser.Messages,
+  AST.Parser.ProcessStatuses;   // system
 
 type
   TSourceFileInfo = record
@@ -19,6 +26,27 @@ type
 
   TSourcesDict = TDictionary<string, TSourceFileInfo>;
 
+  TTestData = class
+  type
+    TNodeType = (ntFolder, ntTest);
+  private
+    FNodeType: TNodeType;
+    FCaption: string;
+    FFilePath: string;
+    FModified: Boolean;
+    FTestNode: PVirtualNode;
+    FFailed: Boolean;
+    procedure SetFilePath(const Value: string);
+    function GetFailed: Boolean;
+  public
+    constructor Create(const AFileName: string; ANodeType: TNodeType);
+    property NodeType: TNodeType read FNodeType;
+    property Caption: string read FCaption;
+    property FilePath: string read FFilePath write SetFilePath;
+    property Modified: Boolean read FModified write FModified;
+    property TestNode: PVirtualNode read FTestNode write FTestNode;
+    property Failed: Boolean read GetFailed write FFailed;
+  end;
 
   TfrmTestAppMain = class(TForm)
     SynPasSyn1: TSynPasSyn;
@@ -26,10 +54,7 @@ type
     tsSource: TTabSheet;
     edUnit: TSynEdit;
     tsAST: TTabSheet;
-    tvAST: TTreeView;
     BottomPanel: TPanel;
-    tsNameSpace: TTabSheet;
-    edAllItems: TSynEdit;
     Panel2: TPanel;
     Panel3: TPanel;
     AddFilesButton: TButton;
@@ -41,14 +66,12 @@ type
     Splitter2: TSplitter;
     MainPanel: TPanel;
     SynEditSearch1: TSynEditSearch;
-    Panel5: TPanel;
-    Button5: TButton;
-    NSSearchEdit: TEdit;
     ErrMemo: TSynEdit;
     Panel6: TPanel;
     LeftPageControl: TPageControl;
     tsLogs: TTabSheet;
     tsFiles: TTabSheet;
+    tsTestScripts: TTabSheet;
     LogMemo: TSynEdit;
     Splitter3: TSplitter;
     Panel7: TPanel;
@@ -87,9 +110,61 @@ type
     ASTParseButton: TButton;
     ASTParseAction: TAction;
     BreakpointOnErrorCheck: TCheckBox;
+    VTTests: TVirtualStringTree;
+    Label6: TLabel;
+    TestScriptsPathEdit: TEdit;
+    ImageList1: TImageList;
+    TestsPopup: TPopupMenu;
+    CreateNewDirAction: TAction;
+    CreateNewDirectory1: TMenuItem;
+    CreateNewTestAction: TAction;
+    CreateNewTest1: TMenuItem;
+    RenameTestAction: TAction;
+    N1: TMenuItem;
+    Rename1: TMenuItem;
+    TestsTopPanel: TPanel;
+    RunAllTestsButton: TButton;
+    ParseAllTestsAction: TAction;
+    LoadLSPConfigButton: TButton;
+    LoadLSPConfigAction: TAction;
+    FilesPopup: TPopupMenu;
+    FilesCheckAllAction: TAction;
+    FilesCheckAllAction1: TMenuItem;
+    N2: TMenuItem;
+    FilesParseFocusedAction: TAction;
+    ParseFocused1: TMenuItem;
+    N3: TMenuItem;
+    FilesRemoveAllAction: TAction;
+    RemoveAll1: TMenuItem;
+    Label7: TLabel;
+    ProjectNameEdit: TEdit;
+    ASTResultTopPanel: TPanel;
+    ASTResultFormatComboBox: TComboBox;
+    ASTResultViewComboBox: TComboBox;
+    ASTPageControl: TPageControl;
+    SynJSONSyn1: TSynJSONSyn;
+    SearchEdit: TEdit;
+    SearchButton: TButton;
+    TestsBottomPanel: TPanel;
+    TotalTestCntLabel: TLabel;
+    TestRunProgressLabel: TLabel;
+    UnitsFullPathCheck: TCheckBox;
+    ShowProgressCheck: TCheckBox;
+    DelphiDirComboBox: TComboBox;
+    ParseRtlCommonCheck: TCheckBox;
+    ParseSelectedTestAction: TAction;
+    ParseSelected1: TMenuItem;
+    N4: TMenuItem;
+    SaveASTCheckBox: TCheckBox;
+    FilesEditAction: TAction;
+    Edit1: TMenuItem;
+    N5: TMenuItem;
+    EditorPopup: TPopupMenu;
+    GoToLineAction: TAction;
+    GoToLine1: TMenuItem;
     procedure ASTParseRTLButtonClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
-    procedure Button5Click(Sender: TObject);
+    procedure SearchButtonClick(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure SaveSettingsButtonClick(Sender: TObject);
     procedure StopIfErrorCheckClick(Sender: TObject);
@@ -103,19 +178,68 @@ type
     procedure SaveSourceActionUpdate(Sender: TObject);
     procedure ASTParseActionExecute(Sender: TObject);
     procedure edUnitSpecialLineColors(Sender: TObject; Line: Integer; var Special: Boolean; var FG, BG: TColor);
+    procedure FormDestroy(Sender: TObject);
+    procedure VTTestsChecking(Sender: TBaseVirtualTree; Node: PVirtualNode; var NewState: TCheckState; var Allowed: Boolean);
+    procedure VTTestsGetImageIndex(Sender: TBaseVirtualTree; Node: PVirtualNode; Kind: TVTImageKind; Column: TColumnIndex;
+      var Ghosted: Boolean; var ImageIndex: TImageIndex);
+    procedure VTTestsGetText(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType;
+      var CellText: string);
+    procedure VTTestsNodeDblClick(Sender: TBaseVirtualTree; const HitInfo: THitInfo);
+    procedure edUnitChange(Sender: TObject);
+    procedure VTTestsDrawText(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;
+      const Text: string; const CellRect: TRect; var DefaultDraw: Boolean);
+    procedure CreateNewDirActionUpdate(Sender: TObject);
+    procedure CreateNewDirActionExecute(Sender: TObject);
+    procedure VTTestsClick(Sender: TObject);
+    procedure CreateNewTestActionExecute(Sender: TObject);
+    procedure RenameTestActionUpdate(Sender: TObject);
+    procedure RenameTestActionExecute(Sender: TObject);
+    procedure ParseAllTestsActionExecute(Sender: TObject);
+    procedure LoadLSPConfigActionExecute(Sender: TObject);
+    procedure FilesCheckAllActionUpdate(Sender: TObject);
+    procedure FilesCheckAllActionExecute(Sender: TObject);
+    procedure FilesParseFocusedActionUpdate(Sender: TObject);
+    procedure FilesParseFocusedActionExecute(Sender: TObject);
+    procedure FilesRemoveAllActionExecute(Sender: TObject);
+    procedure ASTResultFormatComboBoxChange(Sender: TObject);
+    procedure ASTParseActionUpdate(Sender: TObject);
+    procedure DelphiDirComboBoxChange(Sender: TObject);
+    procedure ParseSelectedTestActionUpdate(Sender: TObject);
+    procedure ParseSelectedTestActionExecute(Sender: TObject);
+    procedure FilesEditActionUpdate(Sender: TObject);
+    procedure lbFilesDblClick(Sender: TObject);
+    procedure FilesEditActionExecute(Sender: TObject);
+    procedure GoToLineActionUpdate(Sender: TObject);
+    procedure GoToLineActionExecute(Sender: TObject);
   private
     { Private declarations }
-    //fPKG: INPPackage;
     fSettings: IASTProjectSettings;
     FLockSaveSettings: Boolean;
-    procedure OnProgress(const Module: IASTModule; Status: TASTProcessStatusClass);
-    procedure ShowAllItems(const Project: IASTDelphiProject);
-    procedure ParseProject(const Project: IASTDelphiProject);
-    procedure CompilerMessagesToStrings(const Project: IASTDelphiProject);
+    FAllTests: TStrings;
+    FSelectedTest: TTestData;
+    FLastProject: IASTDelphiProject;
+    procedure OnProgress(const Module: IASTModule; Status: TASTProcessStatusClass; AElapsedTime: Int64);
+    procedure ShowASTResultAsCode(const Project: IASTDelphiProject; ASynEdit: TSynEdit); overload;
+    procedure ShowASTResultAsCode(const AModule: IASTModule; ASynEdit: TSynEdit); overload;
+    procedure ShowASTResultAsJSON(const Project: IASTDelphiProject; ASynEdit: TSynEdit); overload;
+    procedure ShowASTResultAsJSON(const AModule: IASTModule; ASynEdit: TSynEdit); overload;
+    procedure ShowASTResults(const AProject: IASTDelphiProject);
+    procedure SaveASTFiles(const AProject: IASTDelphiProject);
+    function ParseProject(const Project: IASTDelphiProject; AClearOutput, AShowResults, ASaveAST: Boolean): TCompilerResult;
+    procedure CompilerMessagesToStrings(const Project: IASTDelphiProject; AShowFailUnit: Boolean);
     procedure SetDefines(const APrj: IASTDelphiProject);
     procedure SaveSettings;
     procedure LoadSettings;
-    function CreateProject(AParseSystemUnit: Boolean): IASTDelphiProject;
+    procedure LoadDelphiDirs;
+    procedure LoadTestScripts(const ALastTestName: string);
+    procedure LoadLSPConfigDccCmdLine(const ACMDLine: string);
+    procedure LoadLSPConfigFiles(const AJSONArray: TJSONArray);
+    function CreateProject(const AProjectFileName: string; AParseSystemUnit: Boolean): IASTDelphiProject;
+    function FocusedTestData: TTestData;
+    function GetTestSriptsPath: string;
+    procedure ParseTests(AParentNode: PVirtualNode);
+    procedure LoadTests(ARootNode: PVirtualNode; const ARootPath: string);
+    procedure SelectTest(ATestData: TTestData);
   public
     { Public declarations }
     procedure IndexSources(const RootPath: string; Dict: TSourcesDict);
@@ -132,47 +256,65 @@ uses
   System.Rtti,
   System.StrUtils,
   System.IniFiles,
+  System.NetEncoding,
+  System.Win.Registry,
+  REST.Json,
   AST.Delphi.System,
   AST.Delphi.Parser,
   AST.Delphi.Declarations,
-  AST.Classes,
   AST.Writer,
   AST.Targets,
   AST.Delphi.DataTypes,
   AST.Parser.Errors,
   AST.Parser.Utils,
-  AST.Parser.Log;
+  AST.Parser.Log,
+  AST.Utils.CmdLineParser,
+  AST.JsonSchema;
 
 {$R *.dfm}
 
 const
-  SCurSrcFileName = 'current_source.pas';
+  SDefTestScriptName = 'DefaultTest';
 
-procedure TfrmTestAppMain.CompilerMessagesToStrings(const Project: IASTDelphiProject);
-var
-  I: Integer;
-  Msg: TCompilerMessage;
+type
+  TASTTabSheet = class(TTabSheet)
+    SynEdit: TSynEdit;
+  end;
+
+procedure TfrmTestAppMain.CompilerMessagesToStrings(const Project: IASTDelphiProject; AShowFailUnit: Boolean);
 begin
-  ErrMemo.Lines.Add('===================================================================');
-  for i := 0 to Project.Messages.Count - 1 do
-  begin
-    Msg := Project.Messages[i];
-    if (Msg.MessageType >= cmtError) or ShowWarningsCheck.Checked then
-    begin
+  var LSourceToShow := '';
+  var LSourceToShowRow := 0;
+  var LSourceToShowCol := 0;
+  var LUnitsFullPath := UnitsFullPathCheck.Checked;
 
-      ErrMemo.Lines.AddStrings(Msg.AsString.Split([sLineBreak]));
-      if Msg.MessageType >= cmtError then
+  ErrMemo.Lines.Add('-----------------------------------------------');
+  for var LIndex := 0 to Project.Messages.Count - 1 do
+  begin
+    var LMessage := Project.Messages[LIndex];
+    if (LMessage.MessageType >= cmtError) or ShowWarningsCheck.Checked then
+    begin
+      ErrMemo.Lines.AddStrings(LMessage.AsString(LUnitsFullPath).Split([sLineBreak]));
+      if (LMessage.MessageType >= cmtError) and AShowFailUnit then
       begin
-        if Msg.UnitName = 'TestUnit.XXX' then
-        begin
-          edUnit.CaretX := Msg.Col;
-          edUnit.CaretY := Msg.Row;
-          if edUnit.CanFocus then
-            edUnit.SetFocus;
-        end;
+        LSourceToShow := LMessage.ModuleSource;
+        LSourceToShowRow := LMessage.Row;
+        LSourceToShowCol := LMessage.Col;
       end;
     end;
   end;
+
+  if LSourceToShow <> '' then
+  begin
+    if (edUnit.Text <> LSourceToShow) then
+     edUnit.Text := LSourceToShow;
+
+    edUnit.CaretY := LSourceToShowRow;
+    edUnit.CaretX := LSourceToShowCol;
+  end;
+
+  if edUnit.CanFocus then
+    edUnit.SetFocus;
 end;
 
 procedure ASTToTreeView2(ASTUnit: TASTDelphiUnit; TreeView: TTreeView);
@@ -222,6 +364,12 @@ begin
       ErrMemo.Lines.Add(Dict.Items[FileName].FullPath);
     end;
   end;
+end;
+
+procedure TfrmTestAppMain.lbFilesDblClick(Sender: TObject);
+begin
+  if FilesEditAction.Enabled then
+    FilesEditAction.Execute;
 end;
 
 function GetDeclName(const Decl: TASTDeclaration): string;
@@ -274,39 +422,67 @@ var
 begin
   TASTParserLog.Instance.ResetNestedLevel;
 
-  Prj := CreateProject({AParseSystemUnit:} ParseSystemCheck.Checked);
+  if Assigned(FSelectedTest) then
+  begin
+    Prj := CreateProject(FSelectedTest.FilePath, {AParseSystemUnit:} ParseSystemCheck.Checked);
+    Prj.AddUnitSearchPath(GetTestSriptsPath);
+    Prj.AddUnitSearchPath(ExtractFilePath(FSelectedTest.FilePath));
+  end else
+    Prj := CreateProject('', {AParseSystemUnit:} ParseSystemCheck.Checked);
 
   UN := TASTDelphiUnit.Create(Prj, 'test', edUnit.Text);
   Prj.AddUnit(UN, nil);
 
-  ParseProject(Prj);
+  ParseProject(Prj, {AClearOutput:} True, {AShowResults:} True, {ASaveAST:} False);
+end;
 
-  Prj.Clear;
+procedure TfrmTestAppMain.ASTParseActionUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := not Assigned(FLastProject) or not FLastProject.InPogress;
 end;
 
 procedure TfrmTestAppMain.ASTParseRTLButtonClick(Sender: TObject);
 
+  function IsExcluded(const AFileName: string): Boolean;
+  begin
+    Result :=
+      SameText(AFileName, 'System.Internal.MachExceptions') or
+      AFileName.StartsWith('System.Mac.') or
+      AFileName.StartsWith('System.Linux.') or
+      AFileName.StartsWith('Posix.') or
+      AFileName.StartsWith('Macapi.')
+      ;
+  end;
+
   procedure AddDelphiUnits(var AUsesList: string; const APath: string);
   begin
-    var LRtlSources := GetDirectoryFiles(DelphiSrcPathEdit.Text + APath, '*.pas');
+    var LRootPath := TPath.Combine(DelphiSrcPathEdit.Text, APath);
+    var LRtlSources := GetDirectoryFiles(LRootPath, '*.pas');
     for var LPath in LRtlSources do
     begin
       var LUnitName := StringReplace(ExtractFileName(LPath), '.pas', '', [rfReplaceAll]);
-      AUsesList := AddStringSegment(AUsesList, LUnitName, ',');
+      //todo: implement parsing .dpk files and use BuildWinRTL.dpk here
+      if IsExcluded(LUnitName) then
+        continue;
+      AUsesList := AddStringSegment(AUsesList, LUnitName, ',' + sLineBreak);
     end;
-
   end;
 
 var
   UN: TASTDelphiUnit;
-  Prj: IASTDelphiProject;
 begin
   TASTParserLog.Instance.ResetNestedLevel;
 
-  Prj := CreateProject({AParseSystemUnit:} True);
+  FLastProject := CreateProject('RTL', {AParseSystemUnit:} True);
 
-  var LUsesUntis := '';
+  FSelectedTest := nil;
+  VTTests.Repaint;
+
+  var LUsesUntis: string := '';
+
   AddDelphiUnits({var} LUsesUntis, 'rtl\sys');
+  if ParseRtlCommonCheck.Checked then
+    AddDelphiUnits({var} LUsesUntis, 'rtl\common');
 
   var RTLUsesSourceText :=
   'unit RTLParseTest; '#10#13 +
@@ -316,16 +492,31 @@ begin
   'implementation'#10#13 +
   'end.';
 
-  UN := TASTDelphiUnit.Create(Prj, 'RTLParseTest', RTLUsesSourceText);
-  Prj.AddUnit(UN, nil);
+  UN := TASTDelphiUnit.Create(FLastProject, 'RTLParseTest', RTLUsesSourceText);
+  FLastProject.AddUnit(UN, nil);
 
-  ParseProject(Prj);
+  ParseProject(FLastProject, {AClearOutput:} True, {AShowResults:} True, SaveASTCheckBox.Checked);
 end;
 
-procedure TfrmTestAppMain.OnProgress(const Module: IASTModule; Status: TASTProcessStatusClass);
+procedure TfrmTestAppMain.ASTResultFormatComboBoxChange(Sender: TObject);
 begin
-  //if Status = TASTStatusParseSuccess then
-    ErrMemo.Lines.Add(Module.Name + ' : ' + Status.Name);
+  if Assigned(FLastProject) then
+    ShowASTResults(FLastProject);
+end;
+
+procedure TfrmTestAppMain.OnProgress(const Module: IASTModule; Status: TASTProcessStatusClass; AElapsedTime: Int64);
+begin
+  if ShowProgressCheck.Checked then
+  begin
+    var LStr := Format('%s: %s',
+      [IfThen(UnitsFullPathCheck.Checked, Module.FileName, Module.Name), Status.Name]);
+    if Status <> TASTStatusParseBegin then
+      LStr := LStr + ' in ' + GetElapsedStr(AElapsedTime);
+
+    ErrMemo.Lines.Add(LStr);
+    ErrMemo.SelStart := Length(ErrMemo.Text);
+  end;
+  Application.ProcessMessages;
 end;
 
 const
@@ -344,16 +535,22 @@ begin
       LINI.WriteBool(SGeneral, 'SHOW_WARNINGS', ShowWarningsCheck.Checked);
       LINI.WriteBool(SGeneral, 'SHOW_MEMLEAKS', ShowMemLeaksCheck.Checked);
       LINI.WriteBool(SGeneral, 'BREAKPOINT_ON_ERROR', BreakpointOnErrorCheck.Checked);
+      LINI.WriteInteger(SGeneral, 'LEFT_ACTIVE_TAB', LeftPageControl.ActivePageIndex);
+      LINI.WriteBool(SGeneral, 'UNITS_FULL_PATH', UnitsFullPathCheck.Checked);
+      LINI.WriteBool(SGeneral, 'SHOW_PROGRESS', ShowProgressCheck.Checked);
+      LINI.WriteBool(SGeneral, 'SAVE_AST', SaveASTCheckBox.Checked);
 
       LINI.WriteString(SGeneral, 'PLATFORM', cbPlatform.Text);
+      LINI.WriteString(SGeneral, 'DELPHI_BDS', DelphiDirComboBox.Text);
       LINI.WriteString(SGeneral, 'DELPHI_SRC_PATH', DelphiSrcPathEdit.Text);
         LINI.WriteBool(SGeneral, 'DELPHI_SRC_PATH_INCLUDE_SUBDIRS', DelphiPathIncludeSubDirCheck.Checked);
 
+      LINI.WriteString(SGeneral, 'PROJECT_NAME', ProjectNameEdit.Text);
       LINI.WriteString(SGeneral, 'UNIT_SCOPE_NAMES', UnitScopeNamesEdit.Text);
       LINI.WriteString(SGeneral, 'UNIT_SEARCH_PATH', UnitSearchPathEdit.Text);
         LINI.WriteBool(SGeneral, 'UNIT_SEARCH_PATH_INCLUDE_SUBDIRS', UnitSearchPathIncludeSubDirCheck.Checked);
       LINI.WriteString(SGeneral, 'COND_DEFINES', CondDefinesEdit.Text);
-
+      LINI.WriteString(SGeneral, 'TEST_SCRIPTS_PATH', TestScriptsPathEdit.Text);
       LINI.WriteString(SGeneral, 'CUSTOM_UNITS', lbFiles.Items.CommaText);
     finally
       LINI.Free;
@@ -368,18 +565,128 @@ end;
 
 procedure TfrmTestAppMain.SaveSourceActionExecute(Sender: TObject);
 begin
-  edUnit.Lines.SaveToFile(SCurSrcFileName);
-  edUnit.Modified := False;
+  if LeftPageControl.ActivePage = tsTestScripts then
+  begin
+    edUnit.Lines.SaveToFile(FSelectedTest.FilePath);
+    edUnit.Modified := False;
+    FSelectedTest.Modified := False;
+    VTTests.Invalidate;
+  end else
+  if LeftPageControl.ActivePage = tsFiles then
+  begin
+    var LFileName := lbFiles.Items[lbFiles.ItemIndex];
+    edUnit.Lines.SaveToFile(LFileName);
+    edUnit.Modified := False;
+  end;
 end;
 
 procedure TfrmTestAppMain.SaveSourceActionUpdate(Sender: TObject);
 begin
-  TAction(Sender).Enabled := edUnit.Modified;
+  TAction(Sender).Enabled := edUnit.Modified and (
+    ((LeftPageControl.ActivePage = tsTestScripts) and Assigned(FSelectedTest)) or
+    ((LeftPageControl.ActivePage = tsFiles) and (lbFiles.ItemIndex >= 0))
+  );
+end;
+
+function FileURLDecode(const AFileURL: string): string;
+begin
+  Result := TURLEncoding.URL.Decode(AFileURL).
+              Replace('file:///', '', [rfIgnoreCase]).
+              Replace('/', '\', [rfReplaceAll]);
+end;
+
+procedure TfrmTestAppMain.LoadLSPConfigDccCmdLine(const ACMDLine: string);
+begin
+  var LOptions := TDcc32CMDLineParser.Parse(ACMDLine);
+  UnitSearchPathEdit.Text := LOptions['-I'].Value.Replace('"', ''); // remove all quotes
+  UnitSearchPathIncludeSubDirCheck.Checked := False;
+  CondDefinesEdit.Text := LOptions['-D'].Value;
+  UnitScopeNamesEdit.Text := LOptions['-NS'].Value;
+
+  // since .delphilsp.json doesn't contain explicit Delhpi Source Path, we can infer it from the CMD line
+  var LPathArray := LOptions['-I'].Value.Split([';']);
+  if Length(LPathArray) > 0 then
+  begin
+    // take first path, as usual it shold contain '\lib\Win32\debug' or smth like that
+    var LPath := LowerCase(FileURLDecode(LPathArray[0])).Replace('"', '');;
+    LPath := LPath.Replace('\lib\win32\debug', '\source');
+    LPath := LPath.Replace('\lib\win32\release', '\source');
+    LPath := LPath.Replace('\lib\win64\debug', '\source');
+    LPath := LPath.Replace('\lib\win64\release', '\source');
+    DelphiSrcPathEdit.Text := LPath;
+    DelphiDirComboBox.Text := '';
+  end;
+end;
+
+procedure TfrmTestAppMain.LoadLSPConfigFiles(const AJSONArray: TJSONArray);
+begin
+  lbFiles.Clear;
+  for var LObject in AJSONArray do
+  begin
+    var LFileField := LObject.FindValue('file');
+    if Assigned(LFileField) then
+    begin
+      var LFileName := FileURLDecode(LFileField.Value);
+      if ExtractFileExt(LFileName) = '.pas' then
+        lbFiles.AddItem(LFileName, nil);
+    end;
+  end;
+  lbFiles.CheckAll(cbChecked);
+end;
+
+procedure TfrmTestAppMain.LoadDelphiDirs;
+begin
+  var LRegistry := TRegistry.Create;
+  try
+    LRegistry.RootKey := HKEY_LOCAL_MACHINE;
+    LRegistry.OpenKeyReadOnly('SOFTWARE\Embarcadero\BDS');
+    var LSubKeyNames := TStringList.Create;
+    try
+      LRegistry.GetKeyNames(LSubKeyNames);
+      for var LName in LSubKeyNames do
+        DelphiDirComboBox.Items.Add('BDS-' + LName);
+    finally
+      LSubKeyNames.Free;
+    end;
+  finally
+    LRegistry.Free;
+  end;
+end;
+
+procedure TfrmTestAppMain.LoadLSPConfigActionExecute(Sender: TObject);
+begin
+  var LDlg := TOpenDialog.Create(Self);
+  try
+    LDlg.Title := 'Select a Delphi LSP Config file';
+    LDlg.Filter := 'Delphi LSP Config|*.delphilsp.json';
+    if LDlg.Execute then
+    begin
+      var LJson := TJSONValue.ParseJSONValue(TFile.ReadAllText(LDlg.FileName));
+      try
+        var Lproject := LJson.FindValue('settings.project');
+        if Assigned(Lproject) then
+          ProjectNameEdit.Text := FileURLDecode(Lproject.Value);
+
+        var LdccOptions := LJson.FindValue('settings.dccOptions');
+        if Assigned(LdccOptions) then
+          LoadLSPConfigDccCmdLine(LdccOptions.Value);
+
+        var LprojectFiles := LJson.FindValue('settings.projectFiles');
+        if Assigned(LprojectFiles) and (LprojectFiles is TJSONArray) then
+          LoadLSPConfigFiles(TJSONArray(LprojectFiles));
+      finally
+        LJson.Free;
+      end;
+    end;
+  finally
+    LDlg.Free;
+  end;
 end;
 
 procedure TfrmTestAppMain.LoadSettings;
 begin
-  var LINI := TIniFile.Create(ChangeFileExt(Application.ExeName, '.ini'));
+  // TMemIniFile supports longer string values than TIniFile
+  var LINI := TMemIniFile.Create(ChangeFileExt(Application.ExeName, '.ini'));
   try
     // to avoid SaveSettings auto-triggering
     FLockSaveSettings := True;
@@ -390,20 +697,107 @@ begin
     WriteLogCheck.Checked := LINI.ReadBool(SGeneral, 'WRITE_LOG', True);
     ShowWarningsCheck.Checked := LINI.ReadBool(SGeneral, 'SHOW_WARNINGS', False);
     ShowMemLeaksCheck.Checked := LINI.ReadBool(SGeneral, 'SHOW_MEMLEAKS', False);
-    BreakpointOnErrorCheck.Checked :=  LINI.ReadBool(SGeneral, 'BREAKPOINT_ON_ERROR', False);
+    BreakpointOnErrorCheck.Checked := LINI.ReadBool(SGeneral, 'BREAKPOINT_ON_ERROR', False);
+    LeftPageControl.ActivePageIndex := LINI.ReadInteger(SGeneral, 'LEFT_ACTIVE_TAB', 0);
+    UnitsFullPathCheck.Checked := LINI.ReadBool(SGeneral, 'UNITS_FULL_PATH', False);
+    ShowProgressCheck.Checked := LINI.ReadBool(SGeneral, 'SHOW_PROGRESS', True);
+    SaveASTCheckBox.Checked := LINI.ReadBool(SGeneral, 'SAVE_AST', False);
 
     cbPlatform.Text := LINI.ReadString(SGeneral, 'PLATFORM', 'WIN32');
+    ProjectNameEdit.Text := LINI.ReadString(SGeneral, 'PROJECT_NAME', ProjectNameEdit.Text);
+    DelphiDirComboBox.Text := LINI.ReadString(SGeneral, 'DELPHI_BDS', '');
     DelphiSrcPathEdit.Text := LINI.ReadString(SGeneral, 'DELPHI_SRC_PATH', DelphiSrcPathEdit.Text);
     DelphiPathIncludeSubDirCheck.Checked := LINI.ReadBool(SGeneral, 'DELPHI_SRC_PATH_INCLUDE_SUBDIRS', True);
     UnitScopeNamesEdit.Text := LINI.ReadString(SGeneral, 'UNIT_SCOPE_NAMES', UnitScopeNamesEdit.Text);
     UnitSearchPathEdit.Text := LINI.ReadString(SGeneral, 'UNIT_SEARCH_PATH', UnitSearchPathEdit.Text);
     UnitSearchPathIncludeSubDirCheck.Checked := LINI.ReadBool(SGeneral, 'UNIT_SEARCH_PATH_INCLUDE_SUBDIRS', True);
     CondDefinesEdit.Text := LINI.ReadString(SGeneral, 'COND_DEFINES', CondDefinesEdit.Text);
-
+    TestScriptsPathEdit.Text := LINI.ReadString(SGeneral, 'TEST_SCRIPTS_PATH', TestScriptsPathEdit.Text);
     lbFiles.Items.CommaText := LINI.ReadString(SGeneral, 'CUSTOM_UNITS', '');
     lbFiles.CheckAll(TCheckBoxState.cbChecked);
+
+    var LUnitName := LINI.ReadString(SGeneral, 'LAST_TEST_UNIT', SDefTestScriptName);
+    LoadTestScripts(LUnitName);
   finally
     FLockSaveSettings := False;
+    LINI.Free;
+  end;
+end;
+
+procedure TfrmTestAppMain.LoadTests(ARootNode: PVirtualNode; const ARootPath: string);
+begin
+  var LAllFiles := TDirectory.GetFileSystemEntries(ARootPath);
+  for var LFileName in LAllFiles do
+  begin
+    if DirectoryExists(LFileName) then
+    begin
+      var LTestData := TTestData.Create(LFileName, ntFolder);
+      var LNode := VTTests.AddChild(ARootNode, LTestData);
+      LTestData.TestNode := LNode;
+      LoadTests(LNode, LFileName);
+    end else begin
+      if ExtractFileExt(LFileName) = '.pas' then
+      begin
+        var LTestData := TTestData.Create(LFileName, ntTest);
+        LTestData.TestNode := VTTests.AddChild(ARootNode, LTestData);
+        FAllTests.AddObject(LTestData.Caption, LTestData);
+      end;
+    end;
+  end;
+end;
+
+procedure TfrmTestAppMain.LoadTestScripts(const ALastTestName: string);
+begin
+  var LRootPath := GetTestSriptsPath;
+
+  if DirectoryExists(LRootPath) then
+    LoadTests(nil, LRootPath);
+
+  if ALastTestName <> '' then
+  begin
+    var LTestData: TTestData;
+    var LIndex := FAllTests.IndexOf(ALastTestName);
+    if LIndex >= 0 then
+    begin
+      LTestData := FAllTests.Objects[LIndex] as TTestData;
+      SelectTest(LTestData);
+
+      var LNodeToSelect := LTestData.TestNode;
+      if Assigned(LNodeToSelect) then
+      begin
+        var LParentNode := LNodeToSelect.Parent;
+        while Assigned(LParentNode) and (LParentNode <> VTTests.RootNode) do
+        begin
+          VTTests.Expanded[LParentNode] := True;
+          LParentNode := LParentNode.Parent;
+        end;
+        VTTests.FocusedNode := LNodeToSelect;
+        VTTests.Selected[LNodeToSelect] := True;
+        VTTests.ScrollIntoView(LNodeToSelect, {Center:} True);
+      end;
+    end;
+  end;
+  TotalTestCntLabel.Caption := 'Total Tests: ' + FAllTests.Count.ToString;
+end;
+
+procedure TfrmTestAppMain.SelectTest(ATestData: TTestData);
+begin
+  if Assigned(FSelectedTest) and FSelectedTest.Modified then
+    if MessageDlg('The current test script has been modified, cancel changed?',
+                   mtConfirmation, [mbYes, mbNo], 0) = mrYes  then
+      FSelectedTest.Modified := False
+    else
+      Exit;
+
+  FSelectedTest := ATestData;
+  edUnit.Lines.LoadFromFile(ATestData.FilePath);
+  edUnit.Modified := False;
+  ATestData.Modified := False;
+
+  var LINI := TIniFile.Create(ChangeFileExt(Application.ExeName, '.ini'));
+  try
+    LINI.WriteString(SGeneral, 'LAST_TEST_UNIT', ATestData.Caption);
+  finally
     LINI.Free;
   end;
 end;
@@ -435,12 +829,99 @@ begin
   // add custom defines
   for var LDefine in string(CondDefinesEdit.Text).Split([';']) do
     APrj.Defines.Add(LDefine);
+
+  APrj.Defines.Add('AST_PARSING');
 end;
 
-function TfrmTestAppMain.CreateProject(AParseSystemUnit: Boolean): IASTDelphiProject;
+procedure TfrmTestAppMain.CreateNewDirActionExecute(Sender: TObject);
 begin
-  Result := TASTDelphiProject.Create('test');
+  var LDirName: string;
+  if InputQuery('Create New Directory', 'Directory Name', {var} LDirName) then
+  begin
+    var LParentDir := TestScriptsPathEdit.Text;
+    if FocusedTestData <> nil then
+      LParentDir := FocusedTestData.FilePath;
+
+    LDirName := IncludeTrailingPathDelimiter(LParentDir) + LDirName;
+    if CreateDir(LDirName) then
+    begin
+      VTTests.FocusedNode := VTTests.AddChild(VTTests.FocusedNode, TTestData.Create(LDirName, ntFolder));
+      VTTests.Selected[VTTests.FocusedNode] := True;
+    end else
+      RaiseLastOSError;
+  end;
+end;
+
+procedure TfrmTestAppMain.CreateNewDirActionUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := not Assigned(VTTests.FocusedNode) or
+    (FocusedTestData.NodeType = ntFolder);
+end;
+
+procedure TfrmTestAppMain.CreateNewTestActionExecute(Sender: TObject);
+const
+  CUnitTemplateFmt =
+    'unit %s;' + sLineBreak + sLineBreak +
+    'interface'  + sLineBreak + sLineBreak +
+    'implementation' + sLineBreak + sLineBreak +
+    'end.';
+begin
+  var LTestName: string;
+  if InputQuery('Create New Test', 'Test Name', {var} LTestName) then
+  begin
+    var LTestSource := Format(CUnitTemplateFmt, [LTestName]);
+
+    var LParentDir := TestScriptsPathEdit.Text;
+    if FocusedTestData <> nil then
+      LParentDir := FocusedTestData.FilePath;
+
+    LTestName := IncludeTrailingPathDelimiter(LParentDir) + LTestName + '.pas';
+    if not FileExists(LTestName) then
+    begin
+      TFile.WriteAllText(LTestName, LTestSource);
+      var LNewTestData := TTestData.Create(LTestName, ntTest);
+      VTTests.FocusedNode := VTTests.AddChild(VTTests.FocusedNode, LNewTestData);
+      VTTests.Selected[VTTests.FocusedNode] := True;
+      SelectTest(LNewTestData);
+    end else
+      RaiseLastOSError;
+  end;
+end;
+
+procedure TfrmTestAppMain.RenameTestActionExecute(Sender: TObject);
+begin
+  var LTestData := FocusedTestData;
+  var LOldName := LTestData.Caption;
+  var LNewName := LTestData.Caption;
+  var LOldFilePath := LTestData.FilePath;
+  if InputQuery('Rename', 'Name', {var} LNewName) then
+  begin
+    var LNewFilePath := '';
+    if LTestData.NodeType = ntFolder then
+    begin
+      var LPathArray := ExcludeTrailingPathDelimiter(LOldFilePath).Split([PathDelim]);
+      for var LIndex := 0 to Length(LPathArray) - 2 do
+        LNewFilePath := AddStringSegment(LNewFilePath, LPathArray[LIndex], PathDelim);
+
+      LNewFilePath := AddStringSegment(LNewFilePath, LNewName, PathDelim);
+    end else
+      LNewFilePath := LOldFilePath.Replace(LOldName + '.pas', LNewName + '.pas', []);
+
+    if RenameFile(LOldFilePath, LNewFilePath) then
+    begin
+      LTestData.FilePath := LNewFilePath;
+      if LTestData.NodeType = ntTest then
+        SelectTest(LTestData);
+    end else
+      RaiseLastOSError;
+  end;
+end;
+
+function TfrmTestAppMain.CreateProject(const AProjectFileName: string; AParseSystemUnit: Boolean): IASTDelphiProject;
+begin
+  Result := TASTDelphiProject.Create(ExtractFileName(AProjectFileName));
   Result.ParseSystemUnit := AParseSystemUnit;
+  Result.ProjectFileName := AProjectFileName;
   Result.AddUnitSearchPath(DelphiSrcPathEdit.Text, DelphiPathIncludeSubDirCheck.Checked);
   Result.AddUnitSearchPath(UnitSearchPathEdit.Text, UnitSearchPathIncludeSubDirCheck.Checked);
   Result.AddUnitSearchPath(ExtractFilePath(Application.ExeName), {AIncludeSubDirs:} True);
@@ -458,6 +939,34 @@ begin
                         end;
 end;
 
+procedure TfrmTestAppMain.DelphiDirComboBoxChange(Sender: TObject);
+begin
+  if DelphiDirComboBox.Text <> '' then
+  begin
+    var LRegistry := TRegistry.Create;
+    try
+      LRegistry.RootKey := HKEY_LOCAL_MACHINE;
+      if LRegistry.OpenKeyReadOnly('SOFTWARE\Embarcadero\BDS\' +
+        StringReplace(DelphiDirComboBox.Text, 'BDS-', '', [])) then
+      begin
+        DelphiSrcPathEdit.Text :=
+          IncludeTrailingPathDelimiter(LRegistry.ReadString('RootDir')) + 'Source';
+      end;
+    finally
+      LRegistry.Free;
+    end;
+  end;
+end;
+
+procedure TfrmTestAppMain.edUnitChange(Sender: TObject);
+begin
+  if Assigned(FSelectedTest) then
+  begin
+    FSelectedTest.Modified := edUnit.Modified and (LeftPageControl.ActivePage = tsTestScripts);
+    VTTests.Invalidate;
+  end;
+end;
+
 procedure TfrmTestAppMain.edUnitSpecialLineColors(Sender: TObject; Line: Integer; var Special: Boolean; var FG, BG: TColor);
 begin
   if TSynEdit(Sender).CaretY = Line then
@@ -467,15 +976,14 @@ begin
   end;
 end;
 
-procedure TfrmTestAppMain.ShowAllItems(const Project: IASTDelphiProject);
+procedure TfrmTestAppMain.ShowASTResultAsCode(const Project: IASTDelphiProject; ASynEdit: TSynEdit);
 begin
-  edAllItems.BeginUpdate;
+  ASynEdit.BeginUpdate;
   try
-    edAllItems.Clear;
     var LBuilder := TStringBuilder.Create;
     try
       Project.EnumDeclarations(
-        procedure(const Module: TASTModule; const Decl: TASTDeclaration)
+        procedure(const Module: IASTModule; const Decl: IASTDeclaration)
         begin
           if not chkbShowAnonymous.Checked and (Decl.ID.Name = '') then
             Exit;
@@ -490,17 +998,152 @@ begin
 //            LBuilder.Append(sLineBreak);
             Decl.Decl2Str(LBuilder, {ANestedLevel:} 0, {AAppendName:} True);
             LBuilder.Append(sLineBreak);
+            LBuilder.Append(sLineBreak);
           except
             on E: Exception do
               LBuilder.Append(E.Message);
           end;
         end, {AUnitScope} scopeBoth);
     finally
-      edAllItems.Text := LBuilder.ToString;
+      ASynEdit.Text := LBuilder.ToString;
       LBuilder.Free;
     end;
   finally
-    edAllItems.EndUpdate;
+    ASynEdit.EndUpdate;
+  end;
+end;
+
+procedure TfrmTestAppMain.ShowASTResultAsCode(const AModule: IASTModule; ASynEdit: TSynEdit);
+begin
+  ASynEdit.BeginUpdate;
+  try
+    var LBuilder := TStringBuilder.Create;
+    try
+      AModule.EnumDeclarations(
+        procedure(const Module: IASTModule; const Decl: IASTDeclaration)
+        begin
+          if not chkbShowAnonymous.Checked and (Decl.ID.Name = '') then
+            Exit;
+
+          if not chkbShowSysDecls.Checked and (Module.Name = 'system') then
+            Exit;
+
+          try
+            Decl.Decl2Str(LBuilder, {ANestedLevel:} 0, {AAppendName:} True);
+            LBuilder.Append(sLineBreak);
+            LBuilder.Append(sLineBreak);
+          except
+            on E: Exception do
+              LBuilder.Append(E.Message);
+          end;
+        end, {AUnitScope} scopeBoth);
+    finally
+      ASynEdit.Text := LBuilder.ToString;
+      LBuilder.Free;
+    end;
+  finally
+    ASynEdit.EndUpdate;
+  end;
+end;
+
+procedure TfrmTestAppMain.ShowASTResultAsJSON(const AModule: IASTModule; ASynEdit: TSynEdit);
+begin
+  var LJSONProject := AModule.ToJson;
+  try
+    var LJSON := TJson.ObjectToJsonObject(LJSONProject);
+    try
+      ASynEdit.Text := LJSON.Format();
+    finally
+      LJSON.Free;
+    end;
+  finally
+    LJSONProject.Free;
+  end;
+end;
+
+procedure TfrmTestAppMain.ShowASTResultAsJSON(const Project: IASTDelphiProject; ASynEdit: TSynEdit);
+begin
+  var LJSONProject := Project.ToJson;
+  try
+    var LJSON := TJson.ObjectToJsonObject(LJSONProject);
+    try
+      ASynEdit.Text := LJSON.Format();
+    finally
+      LJSON.Free;
+    end;
+  finally
+    LJSONProject.Free;
+  end;
+end;
+
+procedure TfrmTestAppMain.ShowASTResults(const AProject: IASTDelphiProject);
+
+  function CreateTab(const ATitle: string): TSynEdit;
+  begin
+    var LTab := TASTTabSheet.Create(Self);
+    LTab.PageControl := ASTPageControl;
+    LTab.Caption := ATitle;
+    Result := TSynEdit.Create(LTab);
+    Result.Parent := LTab;
+    Result.Align := alClient;
+    Result.Font.Assign(edUnit.Font);
+    Result.SearchEngine := SynEditSearch1;
+    Result.Options := Result.Options + [eoTabsToSpaces];
+    Result.Gutter.ShowLineNumbers := True;
+    LTab.SynEdit := Result;
+    case ASTResultFormatComboBox.ItemIndex of
+      0: Result.Highlighter := SynPasSyn1;
+      1: Result.Highlighter := SynJSONSyn1;
+    end;
+  end;
+
+begin
+  // clear previous results
+  for var LIndex := ASTPageControl.PageCount - 1 downto 0 do
+     ASTPageControl.Pages[LIndex].Free;
+
+  case ASTResultViewComboBox.ItemIndex of
+    // single file
+    0: begin
+         var LTab := CreateTab(AProject.Name);
+         case ASTResultFormatComboBox.ItemIndex of
+           0: ShowASTResultAsCode(AProject, LTab);
+           1: ShowASTResultAsJSON(AProject, LTab);
+         end;
+       end;
+    // separate files
+    1: begin
+         for var LIndex := 0 to AProject.AllUnitsCount - 1 do
+         begin
+           var LUnit := AProject.AllUnits[LIndex];
+           var LTab := CreateTab(LUnit.Name);
+           case ASTResultFormatComboBox.ItemIndex of
+             0: ShowASTResultAsCode(LUnit, LTab);
+             1: ShowASTResultAsJSON(LUnit, LTab);
+           end;
+         end;
+       end;
+  end;
+
+  FLastProject := AProject;
+end;
+
+procedure TfrmTestAppMain.SaveASTFiles(const AProject: IASTDelphiProject);
+begin
+  for var LIndex := 0 to AProject.UnitsCount - 1  do
+  begin
+    var LUnit := AProject.Units[LIndex];
+    var LASTObject := LUnit.ToJson;
+    try
+      var LJSON := TJson.ObjectToJsonObject(LASTObject);
+      try
+        TFile.WriteAllText(LUnit.FileName + '.astjson', LJSON.Format());
+      finally
+        LJSON.Free;
+      end;
+    finally
+      LASTObject.Free;
+    end;
   end;
 end;
 
@@ -514,56 +1157,226 @@ begin
   SaveSettings;
 end;
 
-procedure TfrmTestAppMain.ParseProject(const Project: IASTDelphiProject);
+procedure TfrmTestAppMain.ParseTests(AParentNode: PVirtualNode);
+var
+  LRunCount, LFailCount: Integer;
+
+  procedure RunTest(ATestData: TTestData; const AProject: IASTDelphiProject);
+  begin
+    TASTParserLog.Instance.ResetNestedLevel;
+    var LUnit := TASTDelphiUnit.Create(AProject, ATestData.FilePath);
+    AProject.ProjectFileName := ATestData.FilePath;
+    AProject.AddUnit(LUnit, nil);
+    // add source path for AST tests
+    AProject.AddUnitSearchPath(ExtractFilePath(ATestData.FilePath));
+    // parse the project
+    if ParseProject(AProject, {AClearOutput:} False, {AShowResults:} False, {ASaveAST:} False) <> CompileSuccess then
+      Inc(LFailCount);
+
+    ATestData.Failed := AProject.Messages.ErrorCount > 0;
+    // do not clear implict units (RTL) between tests
+    AProject.Clear({AClearImplicitUnits:} False);
+    // remove source path for AST tests
+    AProject.RemoveUnitSearchPath(ExtractFilePath(ATestData.FilePath));
+
+    Inc(LRunCount);
+    TestRunProgressLabel.Caption := Format('Run Tests: %d from %d (Fail: %d)',
+                                           [LRunCount, FAllTests.Count, LFailCount]);
+
+    ErrMemo.Lines.Add('===================================================================');
+    Application.ProcessMessages;
+  end;
+
+  procedure ParseFolder(AParentNode: PVirtualNode; const AProject: IASTDelphiProject);
+  begin
+    for var LNode in VTTests.ChildNodes(AParentNode) do
+    begin
+      var LTestData := LNode.GetData<TTestData>;
+      if LTestData.NodeType = ntTest then
+        RunTest(LTestData, AProject)
+      else
+        ParseFolder(LNode, AProject);
+    end;
+  end;
+
+var
+  LProject: IASTDelphiProject;
 begin
   ErrMemo.Clear;
   LogMemo.Clear;
 
+  LRunCount := 0;
+  LFailCount := 0;
+
+  LProject := CreateProject('', {AParseSystemUnit:} ParseSystemCheck.Checked);
+  LProject.AddUnitSearchPath(GetTestSriptsPath);
+
+  var LTestData := AParentNode.GetData<TTestData>;
+  if Assigned(LTestData) and (LTestData.NodeType = ntTest) then
+    RunTest(LTestData, LProject)
+  else
+    ParseFolder(AParentNode, LProject);
+
+  LProject.Clear({AClearImplicitUnits:} True);
+  VTTests.Repaint;
+end;
+
+procedure SetNodeChecked(Sender: TBaseVirtualTree; Node: PVirtualNode; CheckState: TCheckState);
+var
+  CNode: PVirtualNode;
+begin
+  CNode := Sender.GetFirstChild(Node);
+  while Assigned(CNode) do
+  begin
+    CNode.CheckState := CheckState;
+    SetNodeChecked(Sender, CNode, CheckState);
+    CNode := Sender.GetNextSibling(CNode);
+  end;
+end;
+
+procedure TfrmTestAppMain.VTTestsChecking(Sender: TBaseVirtualTree; Node: PVirtualNode; var NewState: TCheckState;
+  var Allowed: Boolean);
+begin
+  Allowed := True;
+  SetNodeChecked(Sender, Node, NewState);
+  Sender.Repaint;
+end;
+
+procedure TfrmTestAppMain.VTTestsClick(Sender: TObject);
+begin
+  var LNode := VTTests.GetNodeAt(VTTests.ScreenToClient(Mouse.CursorPos));
+
+  if not Assigned(LNode) then  begin
+    VTTests.FocusedNode := nil;
+    VTTests.ClearSelection;
+  end;
+end;
+
+procedure TfrmTestAppMain.VTTestsDrawText(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode;
+  Column: TColumnIndex; const Text: string; const CellRect: TRect; var DefaultDraw: Boolean);
+begin
+  var LTestData := Sender.GetNodeData<TTestData>(Node);
+  if LTestData = FSelectedTest then
+    TargetCanvas.Font.Style := [TFontStyle.fsUnderline];
+
+  if LTestData.Failed then
+    TargetCanvas.Font.Color := clRed;
+end;
+
+procedure TfrmTestAppMain.VTTestsGetImageIndex(Sender: TBaseVirtualTree; Node: PVirtualNode; Kind: TVTImageKind;
+  Column: TColumnIndex; var Ghosted: Boolean; var ImageIndex: TImageIndex);
+begin
+  var LTestData := Sender.GetNodeData<TTestData>(Node);
+  if (Kind in [ikNormal, ikSelected]) then
+  begin
+    case LTestData.NodeType of
+      ntFolder: ImageIndex := 0;
+      ntTest: ImageIndex := 1;
+    end
+  end;
+end;
+
+procedure TfrmTestAppMain.VTTestsGetText(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex;
+  TextType: TVSTTextType; var CellText: string);
+begin
+  var LTestData := Sender.GetNodeData<TTestData>(Node);
+  CellText := LTestData.Caption;
+  if LTestData.Modified then
+    CellText := CellText + '*';
+end;
+
+procedure TfrmTestAppMain.VTTestsNodeDblClick(Sender: TBaseVirtualTree; const HitInfo: THitInfo);
+begin
+  var LTestData := Sender.GetNodeData<TTestData>(HitInfo.HitNode);
+  if LTestData.NodeType = ntTest then
+    SelectTest(LTestData);
+end;
+
+function TfrmTestAppMain.ParseProject(const Project: IASTDelphiProject; AClearOutput, AShowResults, ASaveAST : Boolean): TCompilerResult;
+begin
+  if AClearOutput then
+  begin
+    ErrMemo.Clear;
+    LogMemo.Clear;
+  end;
+
   BreakpointOnError := BreakpointOnErrorCheck.Checked;
 
   Screen.Cursor := crHourGlass;
-  var Msg := TStringList.Create;
   try
-    var LStartedAt := Now;
-    var CResult := Project.Compile;
-    if CResult = CompileSuccess then
-      Msg.Add('compile success')
-    else
-      Msg.Add('compile fail');
+    ErrMemo.Lines.Add('Parsing project: ' + Project.Name + ' ...');
 
-    Msg.Add(format('total units parsed: %d (interface only: %d)',
+    var LStartedAt := Now;
+    Result := Project.Compile;
+
+    if AShowResults then
+      ShowASTResults(Project);
+
+    if ASaveAST then
+      SaveASTFiles(Project);
+
+    CompilerMessagesToStrings(Project, AShowResults);
+
+    if Result = CompileSuccess then
+      ErrMemo.Lines.Add('compile success')
+    else
+      ErrMemo.Lines.Add('compile fail');
+
+    ErrMemo.Lines.Add(Format('errors\warnings\hints: %d\%d\%d',
+      [Project.Messages.ErrorCount, Project.Messages.WarningCount, Project.Messages.HintCount]));
+    ErrMemo.Lines.Add(format('total units parsed: %d (interface only: %d)',
       [Project.TotalUnitsParsed, Project.TotalUnitsIntfOnlyParsed]));
-    Msg.Add(format('total lines parsed: %d in %s', [Project.TotalLinesParsed,
+
+    ErrMemo.Lines.Add(format('total lines parsed: %d in %s', [Project.TotalLinesParsed,
                                                     FormatDateTime('nn:ss.zzz', Now - LStartedAt)]));
 
-      //ASTToTreeView2(UN, tvAST);
-
-    ShowAllItems(Project);
-    CompilerMessagesToStrings(Project);
-
-    ErrMemo.Lines.AddStrings(Msg);
     ErrMemo.CaretY := ErrMemo.Lines.Count;
     ErrMemo.CaretX := 1;
   finally
     Screen.Cursor := crDefault;
-    Msg.Free;
   end;
+end;
+
+procedure TfrmTestAppMain.ParseSelectedTestActionExecute(Sender: TObject);
+begin
+  ParseTests(VTTests.FocusedNode);
+end;
+
+procedure TfrmTestAppMain.ParseSelectedTestActionUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := Assigned(VTTests.FocusedNode);
+end;
+
+procedure TfrmTestAppMain.ParseAllTestsActionExecute(Sender: TObject);
+begin
+  ParseTests(VTTests.RootNode);
 end;
 
 procedure TfrmTestAppMain.ParseFilesActionExecute(Sender: TObject);
 var
   Prj: IASTDelphiProject;
 begin
-  Prj := CreateProject({AParseSystemUnit:} True);
+  SaveSettings;
+
+  Prj := CreateProject(ProjectNameEdit.Text, {AParseSystemUnit:} True);
+
+  ErrMemo.Clear;
+  LogMemo.Clear;
 
   // add selected files to the project
   for var LIndex := 0 to lbFiles.Count - 1 do
+  begin
+    var LFilePath := lbFiles.Items[LIndex];
     if lbFiles.Checked[LIndex] then
-      Prj.AddUnit(lbFiles.Items[LIndex]);
+      if FileExists(LFilePath) then
+        Prj.AddUnit(LFilePath, {AModule:} nil)
+      else
+        ErrMemo.Lines.Add(Format('Warning: File ''%s'' is not found', [LFilePath]));
+  end;
 
-  ParseProject(Prj);
+  ParseProject(Prj, {AClearOutput:} False, {AShowResults:} True, SaveASTCheckBox.Checked);
 
-  Prj.Clear;
+  Prj.Clear({AClearImplicitUnits:} True);
 end;
 
 procedure TfrmTestAppMain.ParseFilesActionUpdate(Sender: TObject);
@@ -582,18 +1395,83 @@ begin
   TAction(Sender).Enabled := lbFiles.SelCount > 0;
 end;
 
-procedure TfrmTestAppMain.Button5Click(Sender: TObject);
+procedure TfrmTestAppMain.RenameTestActionUpdate(Sender: TObject);
 begin
-  edAllItems.SearchReplace(NSSearchEdit.Text, '', []);
+  TAction(Sender).Enabled := FocusedTestData <> nil;
+end;
+
+procedure TfrmTestAppMain.SearchButtonClick(Sender: TObject);
+begin
+  if (ASTPageControl.ActivePage is TASTTabSheet) then
+    TASTTabSheet(ASTPageControl.ActivePage).SynEdit.SearchReplace(SearchEdit.Text, '', []);
+end;
+
+procedure TfrmTestAppMain.FilesCheckAllActionExecute(Sender: TObject);
+begin
+  if TAction(Sender).Tag = 0 then
+  begin
+    lbFiles.CheckAll(cbUnchecked);
+    TAction(Sender).Tag := 1;
+  end else
+  begin
+    lbFiles.CheckAll(cbChecked);
+    TAction(Sender).Tag := 0;
+  end;
+end;
+
+procedure TfrmTestAppMain.FilesCheckAllActionUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := lbFiles.Count > 0;
+end;
+
+procedure TfrmTestAppMain.FilesEditActionExecute(Sender: TObject);
+begin
+  var LFileName := lbFiles.Items[lbFiles.ItemIndex];
+  edUnit.Text := TFile.ReadAllText(LFileName);
+  edUnit.Modified := False;
+end;
+
+procedure TfrmTestAppMain.FilesEditActionUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := lbFiles.ItemIndex >= 0;
+end;
+
+procedure TfrmTestAppMain.FilesParseFocusedActionExecute(Sender: TObject);
+begin
+  var LProject := CreateProject(ProjectNameEdit.Text, {AParseSystemUnit:} True);
+  LProject.AddUnit(lbFiles.Items[lbFiles.ItemIndex], {AModule:} nil);
+  ParseProject(LProject, {AClearOutput:} True, {AShowResults:} True, SaveASTCheckBox.Checked);
+  LProject.Clear({AClearImplicitUnits:} True);
+end;
+
+procedure TfrmTestAppMain.FilesParseFocusedActionUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := lbFiles.ItemIndex >= 0;
+end;
+
+procedure TfrmTestAppMain.FilesRemoveAllActionExecute(Sender: TObject);
+begin
+  lbFiles.Clear;
+end;
+
+function TfrmTestAppMain.FocusedTestData: TTestData;
+begin
+  if Assigned(VTTests.FocusedNode) then
+    Result := VTTests.FocusedNode.GetData<TTestData>
+  else
+    Result := nil;
 end;
 
 procedure TfrmTestAppMain.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
+  SaveSettings;
   TPooledObject.ClearPool;
 end;
 
 procedure TfrmTestAppMain.FormCreate(Sender: TObject);
 begin
+  FAllTests := TStringList.Create;
+
   MainPageControl.ActivePageIndex := 0;
   SrcPageControl.ActivePageIndex := 0;
 
@@ -604,600 +1482,815 @@ begin
       LogMemo.Lines.Add(DupeString(' ', ANestedLevel) + AMessage);
   end;
 
-  if FileExists(SCurSrcFileName) then
-    edUnit.Lines.LoadFromFile(SCurSrcFileName);
-  edUnit.Modified := False;
-
+  LoadDelphiDirs;
   LoadSettings;
 
   lbFiles.MultiSelect := True;
 
   ReportMemoryLeaksOnShutdown := ShowMemLeaksCheck.Checked;
+  BreakpointOnErrorCheck.Enabled := True;// (System.DebugHook > 0);
+
+  Caption := Caption + ' (' +
+    {$IFDEF CPU64BITS}'64'{$ELSE}'32'{$ENDIF} + ' Bit ' +
+    {$IFDEF DEBUG}'DEBUG'{$ELSE}'RELEASE'{$ENDIF} + ')';
 end;
 
-procedure TestSetImplicit;
-type
-  TEnum1 = (en11, en12, en13);
-  TEnum2 = (en21, en22, en23);
-  TXSmallSet = set of 0..2;
-  TSmallSet = set of 0..31;
-  TLargeSet = set of Byte;
-  TEnumSet1 = set of TEnum1;
-  TEnumSet2 = set of TEnum2;
+procedure TfrmTestAppMain.FormDestroy(Sender: TObject);
+begin
+  FAllTests.Free;
+end;
+
+function TfrmTestAppMain.GetTestSriptsPath: string;
+begin
+  Result := TestScriptsPathEdit.Text;
+  if IsRelativePath(Result) then
+    Result := TPath.GetFullPath(TPath.Combine(ExtractFilePath(Application.ExeName), Result));
+end;
+
+procedure TfrmTestAppMain.GoToLineActionExecute(Sender: TObject);
 var
-  SS: TSmallSet;
-  XS: TXSmallSet;
-  LS: TLargeSet;
-  ES1: TEnumSet1;
-  ES2: TEnumSet1;
-  I8: Byte;
-  I32: Integer;
+  LValue: string;
+  LLineNum: Integer;
 begin
-  SS := LS;
-  LS := SS;
-
-  ES1 := ES2;
-  ES1 := TEnumSet1(I8);
-
-  //LS := ES;
+  if InputQuery('Go To Line Number', 'Enter a Line Number:', {var} LValue) then
+    if TryStrToInt(LValue, {ot} LLineNum) then
+      edUnit.GotoLineAndCenter(LLineNum);
 end;
 
-procedure TestExplicits;
-type
-  TSProc = procedure(a: Integer);
-  TRProc = reference to procedure(a: Integer);
-  TMProc1 = procedure(a: Integer) of object;
-  TMProc2 = procedure(a, b: Integer) of object;
-  TEnum = (en1, en2, en3);
-var
-  Enm: TEnum;
-  Cmp: Comp;
-  Cur: Currency;
-  Sng: Single;
-  Dbl: Double;
-  Vrn: Variant;
-  Ptr: Pointer;
-  Inf: IInterface;
-  RPrc: TRProc;
-  SPrc: TSProc;
-  MPrc: TMProc1;
-  Obj: TObject;
-  WStr: WideString;
-  AStr: AnsiString;
-  UStr: string;
-  DArr: TStringDynArray;
-  SArr: array [1..SizeOf(Pointer)] of Byte;
-  SArrVar: array [1..SizeOf(Variant)] of Byte;
-  Rec: record i: NativeInt end;
-  RecVar: record arr: array [1..SizeOf(Variant)] of Byte end;
-
-  Rec16: record c, d: pointer end;
-  SArr16: array [1..SizeOf(Pointer)*2] of Byte;
+procedure TfrmTestAppMain.GoToLineActionUpdate(Sender: TObject);
 begin
-  var CC0 := TClass(Ptr);
-  var CC1 := TClass(WStr);
-  var CC2 := TClass(AStr);
-  var CC3 := TClass(UStr);
-  var CC4 := TClass(DArr);
-  var CC5 := TClass(SArr);
-  var CC6 := TClass(Inf);
-  var CC7 := TClass(Rec);
-  var CC8 := TClass(Obj);
-  //var CC9 := TClass(RPrc); !!!
-  //var CC9 := TClass(SPrc); !!!
-
-  var TC0 := TObject(Ptr);
-  var TC1 := TObject(WStr);
-  var TC2 := TObject(AStr);
-  var TC3 := TObject(UStr);
-  var TC4 := TObject(DArr);
-  var TC5 := TObject(SArr);
-  var TC6 := TObject(Inf);
-  var TC7 := TObject(Rec);
-  //var TC8 := TObject(RPrc); !!!
-  //var TC8 := TObject(SPrc); !!!
-
-  var XC0 := IInterface(Ptr);
-  var XC1 := IInterface(WStr);
-  var XC2 := IInterface(AStr);
-  var XC3 := IInterface(UStr);
-  var XC4 := IInterface(DArr);
-  var XC5 := IInterface(SArr);
-  var XC7 := IInterface(Rec);
-  //var XC8 := IInterface(Obj); !!!
-  //var XC9 := IInterface(RPrc); !!!
-  //var XC9 := IInterface(SPrc); !!!
-
-  var DA0 := TStringDynArray(Ptr);
-  var DA1 := TStringDynArray(WStr);
-  var DA2 := TStringDynArray(AStr);
-  var DA3 := TStringDynArray(UStr);
-  var DA4 := TStringDynArray(DArr);
-  var DA5 := TStringDynArray(SArr);
-  var DA6 := TStringDynArray(Inf);
-  var DA7 := TStringDynArray(Rec);
-  var DA8 := TStringDynArray(Obj);
-  //var DA9 := TStringDynArray(RPrc); !!!
-  //var DA9 := TStringDynArray(SPrc); !!!
-
-  var SS0 := string(Ptr);
-  var SS1 := string(WStr);
-  var SS2 := string(AStr);
-  var SS3 := string(UStr);
-  var SS4 := string(DArr);
-  var SS5 := string(SArr);
-  var SS6 := string(Inf);
-  var SS7 := string(Rec);
-  var SS8 := string(Obj);
-  //var SS9 := string(DPrc); !!!
-  //var SS9 := string(SPrc); !!!
-
-  var RP0 := TProc(Ptr);
-  var RP1 := TProc(WStr);
-  var RP2 := TProc(AStr);
-  var RP3 := TProc(UStr);
-  var RP4 := TProc(DArr);
-  var RP5 := TProc(SArr);
-  var RP6 := TProc(Inf);
-  var RP7 := TProc(Rec);
-  var RP8 := TProc(RPrc);
-  var RP9 := TProc(SPrc);
-  //var RP10 := TProc(Obj); !!!
-
-  var SP0 := TSProc(Ptr);
-  var SP1 := TSProc(WStr);
-  var SP2 := TSProc(AStr);
-  var SP3 := TSProc(UStr);
-  var SP4 := TSProc(DArr);
-  var SP5 := TSProc(SArr);
-  var SP6 := TSProc(Inf);
-  var SP7 := TSProc(Rec);
-  var SP8 := TSProc(RPrc);
-  var SP9 := TSProc(Obj);
-
-
-  var PP0 := pointer(Ptr);
-  var PP1 := pointer(WStr);
-  var PP2 := pointer(AStr);
-  var PP3 := pointer(UStr);
-  var PP4 := pointer(DArr);
-  var PP5 := pointer(SArr);
-  var PP6 := pointer(Inf);
-  var PP7 := pointer(Rec);
-  var PP8 := pointer(Obj);
-  //var PP8 := pointer(RPrc); !!!
-  //var PP9 := pointer(SPrc); !!!
-
-  var MP0 := TMProc2(MPrc);
-  var MP1 := TMProc2(SArr16);
-  var MP2 := TMProc2(Rec16);
-
-  //var V0 := Variant(Ptr);
-  var V1 := Variant(WStr);
-  var V2 := Variant(AStr);
-  var V3 := Variant(UStr);
-  var V4 := Variant(DArr);
-  var V5 := Variant(SArrVar);
-  var V6 := Variant(Inf);
-  //var V7 := Variant(Obj);
-  var V8 := Variant(RecVar);
-  var V9 := Variant(Sng);
-  var V10 := Variant(Dbl);
-  var V11 := Variant(Cur);
-  var V12 := Variant(Cmp);
-  var V13 := Variant(Enm);
+  TAction(Sender).Enabled := edUnit.Focused;
 end;
 
-procedure TestImplicits_Variant;
-var
-
-  Cmp: Comp;
-  Cur: Currency;
-  Sng: Single;
-  Dbl: Double;
-  Vrn: Variant;
-  Ptr: Pointer;
-  Inf: IInterface;
-  Obj: TObject;
-  WStr: WideString;
-  AStr: AnsiString;
-  UStr: string;
-  UChr: WideChar;
-  AChr: AnsiChar;
-  DArrStr: TStringDynArray;
-  DArrInt: TIntegerDynArray;
-begin
-  Cmp := Vrn;
-  Cur := Vrn;
-  Sng := Vrn;
-  Dbl := Vrn;
-  //Ptr := Vrn;
-  Inf := Vrn;
-  //Obj := Vrn;
-  WStr := Vrn;
-  AStr := Vrn;
-  UStr := Vrn;
-  //UChr := Vrn;
-  //AChr := Vrn;
-  DArrStr := Vrn;
-  DArrInt := Vrn;
-
-  Vrn := Cmp;
-  Vrn:= Cur ;
-  Vrn := Sng;
-  Vrn := Dbl;
-  //Vrn := Ptr;
-  Vrn := Inf;
-  //Vrn := Obj;
-  Vrn := WStr;
-  Vrn := AStr;
-  Vrn := UStr;
-//  Vrn := UChr; implicit cast to string?
-//  Vrn := AChr; implicit cast to string?
-  Vrn := DArrStr;
-  Vrn := DArrInt;
-end;
-
-
-procedure Test0;
-var
-  L: Int64;
-  H: Int64;
-  R: UInt64;
-  A1, A2: TStringDynArray;
-  AS1, AS2: array [1..10] of byte;
-begin
-  L := 0;
-  H := Int64(MaxUInt64);
-  R := UInt64(H) - UInt64(L);
-  A1 := Copy(A2);
-end;
-
-type
-  TInt = type Integer;
-
-  TTT = class
-    constructor Create;
-    class procedure T1;
-    procedure X1(a: TInt); virtual;
-  end;
-
-  TTT2 = class(TTT)
-    procedure X1(n: TInt); override;
-  end;
-
-  TM = procedure of object;
-  TF = function(C: TClass): TTT of object;
-
-procedure Test12;
-begin
-  var V := @TTT.Destroy;
-end;
-
-{ TTT }
-
-constructor TTT.Create;
-begin
-
-end;
-
-class procedure TTT.T1;
-begin
-
-end;
-
-procedure TTT.X1(a: TInt);
-begin
-
-end;
-
-{ TTT2 }
-
-procedure TTT2.X1(n: TInt);
-begin
-  inherited;
-
-end;
-
-procedure XX(A: Integer); overload;
-begin
-
-end;
-
-procedure XX(B: TInt); overload;
-begin
-
-end;
-
-procedure AliasTest;
-var
-  A: TInt;
-  I: Integer;
-begin
-  I := 0;
-  A := I;
-  //if A <> 0 then;
-end;
-
-type
-  IComparer<T> = interface
-    function Compare(const Left, Right: T): Integer;
-  end;
-
-  TArray = class
-    //class procedure Sort<T>(var Values: array of T); overload; static;
-    class procedure Sort<T>(var Values: array of T; const Comparer: IComparer<T>); static;
-  end;
-
-  TC1 = class abstract
-  private
-    FP1: Integer;
-    function GetItem(Index: Integer): string;
-    procedure SetP1(Index: Integer; Value: Integer);
-  protected
-    property P1: Integer index 0 read FP1 write SetP1 stored False default 0;
-    property Items[Index: Integer]: string read GetItem;
-  end;
-
-  TC2 = class(TC1)
-  public
-    property P1 index 0 stored True default 1;
-    property Items index 1 stored False; default;
-  end;
-
-procedure Test2;
-var
-  Arr: array of string;
-begin
-  TArray.Sort<string>(Arr, nil);
-end;
-
-procedure X1(A: TArray<string>); overload;
-begin
-
-end;
-
-procedure X1(A: array of string); overload;
-begin
-
-end;
-
-{ TArray }
-
-class procedure TArray.Sort<T>(var Values: array of T; const Comparer: IComparer<T>);
-begin
-
-end;
-
-{ TC1 }
-
-function TC1.GetItem(Index: Integer): string;
-begin
-
-end;
-
-procedure TC1.SetP1(Index, Value: Integer);
-begin
-
-end;
-
-procedure Test; platform;
-  procedure sub; platform;
-  begin
-
-  end;
-begin
-
-end;
-
-type
-
-  TGeneric = class;
-  TGeneric<T> = class;
-  TGeneric<T, K> = class;
-
-  TGeneric = class
-  end;
-
-  TGeneric<T> = class
-  end;
-
-  TGeneric<T, K> = class
-  end;
-
-  TC = class (TGeneric);
-
-  TX<T> = class(TC)
-
-  end;
-
-procedure TestPointers;
-type
-{$POINTERMATH ON}
-  PInteger = ^Integer;
-  PPointer = ^Pointer;
-{$POINTERMATH OFF}
-var
-  Ptr1: PByte;
-  Ptr2: PInteger;
-  Ptr3: PPointer;
-begin
-  Ptr1[0] := 5;
-  Ptr2[0] := 5;
-  Ptr3[0] := nil;
-end;
-
-var
-  G1: TGeneric;
-  G2: TGeneric<string>;
-  G3: TGeneric<string, string>;
-
-type
-  IMyDisp = dispinterface
-    ['{2933BF80-7B36-11D2-B20E-00C04F983E60}']
-    property nodeName: string readonly dispid 1;
-    property nodeValue: OleVariant writeonly dispid 3;
-    property item[index: Integer]: IMyDisp readonly dispid 0; default;
-  end;
-
-  TTestClass = class
-  var
-    data: string;
-    at,
-    on,
-    out,
+//procedure TestSetImplicit;
+//type
+//  TEnum1 = (en11, en12, en13);
+//  TEnum2 = (en21, en22, en23);
+//  TXSmallSet = set of 0..2;
+//  TSmallSet = set of 0..31;
+//  TLargeSet = set of Byte;
+//  TEnumSet1 = set of TEnum1;
+//  TEnumSet2 = set of TEnum2;
+//var
+//  SS: TSmallSet;
+//  XS: TXSmallSet;
+//  LS: TLargeSet;
+//  ES1: TEnumSet1;
+//  ES2: TEnumSet1;
+//  I8: Byte;
+//  I32: Integer;
+//begin
+//  SS := LS;
+//  LS := SS;
+//
+//  ES1 := ES2;
+//  ES1 := TEnumSet1(I8);
+//
+//  //LS := ES;
+//end;
+//
+//procedure TestExplicits;
+//type
+//  TSProc = procedure(a: Integer);
+//  TRProc = reference to procedure(a: Integer);
+//  TMProc1 = procedure(a: Integer) of object;
+//  TMProc2 = procedure(a, b: Integer) of object;
+//  TEnum = (en1, en2, en3);
+//var
+//  Enm: TEnum;
+//  Cmp: Comp;
+//  Cur: Currency;
+//  Sng: Single;
+//  Dbl: Double;
+//  Vrn: Variant;
+//  Ptr: Pointer;
+//  Inf: IInterface;
+//  RPrc: TRProc;
+//  SPrc: TSProc;
+//  MPrc: TMProc1;
+//  Obj: TObject;
+//  WStr: WideString;
+//  AStr: AnsiString;
+//  UStr: string;
+//  DArr: TStringDynArray;
+//  SArr: array [1..SizeOf(Pointer)] of Byte;
+//  SArrVar: array [1..SizeOf(Variant)] of Byte;
+//  Rec: record i: NativeInt end;
+//  RecVar: record arr: array [1..SizeOf(Variant)] of Byte end;
+//
+//  Rec16: record c, d: pointer end;
+//  SArr16: array [1..SizeOf(Pointer)*2] of Byte;
+//begin
+//  var CC0 := TClass(Ptr);
+//  var CC1 := TClass(WStr);
+//  var CC2 := TClass(AStr);
+//  var CC3 := TClass(UStr);
+//  var CC4 := TClass(DArr);
+//  var CC5 := TClass(SArr);
+//  var CC6 := TClass(Inf);
+//  var CC7 := TClass(Rec);
+//  var CC8 := TClass(Obj);
+//  //var CC9 := TClass(RPrc); !!!
+//  //var CC9 := TClass(SPrc); !!!
+//
+//  var TC0 := TObject(Ptr);
+//  var TC1 := TObject(WStr);
+//  var TC2 := TObject(AStr);
+//  var TC3 := TObject(UStr);
+//  var TC4 := TObject(DArr);
+//  var TC5 := TObject(SArr);
+//  var TC6 := TObject(Inf);
+//  var TC7 := TObject(Rec);
+//  //var TC8 := TObject(RPrc); !!!
+//  //var TC8 := TObject(SPrc); !!!
+//
+//  var XC0 := IInterface(Ptr);
+//  var XC1 := IInterface(WStr);
+//  var XC2 := IInterface(AStr);
+//  var XC3 := IInterface(UStr);
+//  var XC4 := IInterface(DArr);
+//  var XC5 := IInterface(SArr);
+//  var XC7 := IInterface(Rec);
+//  //var XC8 := IInterface(Obj); !!!
+//  //var XC9 := IInterface(RPrc); !!!
+//  //var XC9 := IInterface(SPrc); !!!
+//
+//  var DA0 := TStringDynArray(Ptr);
+//  var DA1 := TStringDynArray(WStr);
+//  var DA2 := TStringDynArray(AStr);
+//  var DA3 := TStringDynArray(UStr);
+//  var DA4 := TStringDynArray(DArr);
+//  var DA5 := TStringDynArray(SArr);
+//  var DA6 := TStringDynArray(Inf);
+//  var DA7 := TStringDynArray(Rec);
+//  var DA8 := TStringDynArray(Obj);
+//  //var DA9 := TStringDynArray(RPrc); !!!
+//  //var DA9 := TStringDynArray(SPrc); !!!
+//
+//  var SS0 := string(Ptr);
+//  var SS1 := string(WStr);
+//  var SS2 := string(AStr);
+//  var SS3 := string(UStr);
+//  var SS4 := string(DArr);
+//  var SS5 := string(SArr);
+//  var SS6 := string(Inf);
+//  var SS7 := string(Rec);
+//  var SS8 := string(Obj);
+//  //var SS9 := string(DPrc); !!!
+//  //var SS9 := string(SPrc); !!!
+//
+//  var RP0 := TProc(Ptr);
+//  var RP1 := TProc(WStr);
+//  var RP2 := TProc(AStr);
+//  var RP3 := TProc(UStr);
+//  var RP4 := TProc(DArr);
+//  var RP5 := TProc(SArr);
+//  var RP6 := TProc(Inf);
+//  var RP7 := TProc(Rec);
+//  var RP8 := TProc(RPrc);
+//  var RP9 := TProc(SPrc);
+//  //var RP10 := TProc(Obj); !!!
+//
+//  var SP0 := TSProc(Ptr);
+//  var SP1 := TSProc(WStr);
+//  var SP2 := TSProc(AStr);
+//  var SP3 := TSProc(UStr);
+//  var SP4 := TSProc(DArr);
+//  var SP5 := TSProc(SArr);
+//  var SP6 := TSProc(Inf);
+//  var SP7 := TSProc(Rec);
+//  var SP8 := TSProc(RPrc);
+//  var SP9 := TSProc(Obj);
+//
+//
+//  var PP0 := pointer(Ptr);
+//  var PP1 := pointer(WStr);
+//  var PP2 := pointer(AStr);
+//  var PP3 := pointer(UStr);
+//  var PP4 := pointer(DArr);
+//  var PP5 := pointer(SArr);
+//  var PP6 := pointer(Inf);
+//  var PP7 := pointer(Rec);
+//  var PP8 := pointer(Obj);
+//  //var PP8 := pointer(RPrc); !!!
+//  //var PP9 := pointer(SPrc); !!!
+//
+//  var MP0 := TMProc2(MPrc);
+//  var MP1 := TMProc2(SArr16);
+//  var MP2 := TMProc2(Rec16);
+//
+//  //var V0 := Variant(Ptr);
+//  var V1 := Variant(WStr);
+//  var V2 := Variant(AStr);
+//  var V3 := Variant(UStr);
+//  var V4 := Variant(DArr);
+//  var V5 := Variant(SArrVar);
+//  var V6 := Variant(Inf);
+//  //var V7 := Variant(Obj);
+//  var V8 := Variant(RecVar);
+//  var V9 := Variant(Sng);
+//  var V10 := Variant(Dbl);
+//  var V11 := Variant(Cur);
+//  var V12 := Variant(Cmp);
+//  var V13 := Variant(Enm);
+//end;
+//
+//procedure TestImplicits_Variant;
+//var
+//
+//  Cmp: Comp;
+//  Cur: Currency;
+//  Sng: Single;
+//  Dbl: Double;
+//  Vrn: Variant;
+//  Ptr: Pointer;
+//  Inf: IInterface;
+//  Obj: TObject;
+//  WStr: WideString;
+//  AStr: AnsiString;
+//  UStr: string;
+//  UChr: WideChar;
+//  AChr: AnsiChar;
+//  DArrStr: TStringDynArray;
+//  DArrInt: TIntegerDynArray;
+//begin
+//  Cmp := Vrn;
+//  Cur := Vrn;
+//  Sng := Vrn;
+//  Dbl := Vrn;
+//  //Ptr := Vrn;
+//  Inf := Vrn;
+//  //Obj := Vrn;
+//  WStr := Vrn;
+//  AStr := Vrn;
+//  UStr := Vrn;
+//  //UChr := Vrn;
+//  //AChr := Vrn;
+//  DArrStr := Vrn;
+//  DArrInt := Vrn;
+//
+//  Vrn := Cmp;
+//  Vrn:= Cur ;
+//  Vrn := Sng;
+//  Vrn := Dbl;
+//  //Vrn := Ptr;
+//  Vrn := Inf;
+//  //Vrn := Obj;
+//  Vrn := WStr;
+//  Vrn := AStr;
+//  Vrn := UStr;
+////  Vrn := UChr; implicit cast to string?
+////  Vrn := AChr; implicit cast to string?
+//  Vrn := DArrStr;
+//  Vrn := DArrInt;
+//end;
+//
+//
+//procedure Test0;
+//var
+//  L: Int64;
+//  H: Int64;
+//  R: UInt64;
+//  A1, A2: TStringDynArray;
+//  AS1, AS2: array [1..10] of byte;
+//begin
+//  L := 0;
+//  H := Int64(MaxUInt64);
+//  R := UInt64(H) - UInt64(L);
+//  A1 := Copy(A2);
+//end;
+//
+//type
+//  TInt = type Integer;
+//
+//  TTT = class
+//    constructor Create;
+//    class procedure T1;
+//    procedure X1(a: TInt); virtual;
+//  end;
+//
+//  TTT2 = class(TTT)
+//    procedure X1(n: TInt); override;
+//  end;
+//
+//  TM = procedure of object;
+//  TF = function(C: TClass): TTT of object;
+//
+//procedure Test12;
+//begin
+//  var V := @TTT.Destroy;
+//end;
+//
+//{ TTT }
+//
+//constructor TTT.Create;
+//begin
+//
+//end;
+//
+//class procedure TTT.T1;
+//begin
+//
+//end;
+//
+//procedure TTT.X1(a: TInt);
+//begin
+//
+//end;
+//
+//{ TTT2 }
+//
+//procedure TTT2.X1(n: TInt);
+//begin
+//  inherited;
+//
+//end;
+//
+//procedure XX(A: Integer); overload;
+//begin
+//
+//end;
+//
+//procedure XX(B: TInt); overload;
+//begin
+//
+//end;
+//
+//procedure AliasTest;
+//var
+//  A: TInt;
+//  I: Integer;
+//begin
+//  I := 0;
+//  A := I;
+//  //if A <> 0 then;
+//end;
+//
+//type
+//  IComparer<T> = interface
+//    function Compare(const Left, Right: T): Integer;
+//  end;
+//
+//  TArray = class
+//    //class procedure Sort<T>(var Values: array of T); overload; static;
+//    class procedure Sort<T>(var Values: array of T; const Comparer: IComparer<T>); static;
+//  end;
+//
+//  TC1 = class abstract
+//  private
+//    FP1: Integer;
+//    function GetItem(Index: Integer): string;
+//    procedure SetP1(Index: Integer; Value: Integer);
+//  protected
+//    property P1: Integer index 0 read FP1 write SetP1 stored False default 0;
+//    property Items[Index: Integer]: string read GetItem;
+//  end;
+//
+//  TC2 = class(TC1)
+//  public
+//    property P1 index 0 stored True default 1;
+//    property Items index 1 stored False; default;
+//  end;
+//
+//  TC1Class = class of TC1;
+//  TC2Class = class of TC2;
+//
+//procedure Test2;
+//var
+//  Arr: array of string;
+//begin
+//  TArray.Sort<string>(Arr, nil);
+//end;
+//
+//procedure X1(A: TArray<string>); overload;
+//begin
+//
+//end;
+//
+//procedure X1(A: array of string); overload;
+//begin
+//
+//end;
+//
+//{ TArray }
+//
+//class procedure TArray.Sort<T>(var Values: array of T; const Comparer: IComparer<T>);
+//begin
+//
+//end;
+//
+//{ TC1 }
+//
+//function TC1.GetItem(Index: Integer): string;
+//begin
+//
+//end;
+//
+//procedure TC1.SetP1(Index, Value: Integer);
+//begin
+//
+//end;
+//
+//procedure Test; platform;
+//  procedure sub; platform;
+//  begin
+//
+//  end;
+//begin
+//
+//end;
+//
+//type
+//
+//  TGeneric = class;
+//  TGeneric<T> = class;
+//  TGeneric<T, K> = class;
+//
+//  TGeneric = class
+//  end;
+//
+//  TGeneric<T> = class
+//  end;
+//
+//  TGeneric<T, K> = class
+//  end;
+//
+//  TC = class (TGeneric);
+//
+//  TX<T> = class(TC)
+//
+//  end;
+//
+//procedure TestPointers;
+//type
+//{$POINTERMATH ON}
+//  PInteger = ^Integer;
+//  PPointer = ^Pointer;
+//{$POINTERMATH OFF}
+//var
+//  Ptr1: PByte;
+//  Ptr2: PInteger;
+//  Ptr3: PPointer;
+//begin
+//  Ptr1[0] := 5;
+//  Ptr2[0] := 5;
+//  Ptr3[0] := nil;
+//end;
+//
+//var
+//  G1: TGeneric;
+//  G2: TGeneric<string>;
+//  G3: TGeneric<string, string>;
+//
+//type
+//  IMyDisp = dispinterface
+//    ['{2933BF80-7B36-11D2-B20E-00C04F983E60}']
+//    property nodeName: string readonly dispid 1;
+//    property nodeValue: OleVariant writeonly dispid 3;
+//    property item[index: Integer]: IMyDisp readonly dispid 0; default;
+//  end;
+//
+//  TTestClass = class
+//  var
+//    data: string;
+//    at,
+//    on,
+//    out,
+////    protected,
+//    virtual,
+//    operator,
+//    align,
+//    override: string;
+//
+////  const
+////    protected = 5;
+//  protected
+//    property automated: string read data;
+//    property private: string read data;
+//    property protected: string read data;
+//    property public: string read data;
+//    property published: string read data;
+//    property strict: string read data;
+//    property sealed: string read data;
+//    property abstract: string read data;
+//    property readonly: string read data;
+//    property writeonly: string read data;
+//    property dispid: string read data;
+//    property default: string read data;
+//    property stored: string read data;
+//    property index: string read data;
+//    property register: string read data;
+//    property safecall: string read data;
+//    property stdcall: string read data;
+//    property cdecl: string read data;
+//    property varargs: string read data;
+//    property winapi: string read data;
+//  end;
+//
+//  read = integer;
+//
+//  TTestClass2 = record
+//    function read: read;
+//    property _read: read read read;
+//  end;
+//
+//  TTestRecord2 = record
+//    on,
 //    protected,
-    virtual,
-    operator,
-    align,
-    override: string;
-
+//    sealed,
+//    abstract,
+//    readonly,
+//    writeonly,
+//    dispid,
+//    default,
+//    stored,
+//    index,
+//    register,
+//    safecall,
+//    stdcall,
+//    cdecl,
+//    assembler,
+//    export,
+//    helper,
+//    forward,
+//    virtual,
+//    override,
+//    varargs: string;
+//  end;
+//
+//  package = class
+//    on,
+//    protected,
+//    sealed,
+//    abstract,
+//    readonly,
+//    writeonly,
+//    dispid,
+//    default,
+//    stored,
+//    index,
+//    register,
+//    safecall,
+//    stdcall,
+//    cdecl,
+//    assembler,
+//    export,
+//    helper,
+//    forward,
+//    virtual,
+//    override,
+//    varargs: string;
+//  end;
+//
+//  TShortIntHelper = record helper for ShortInt
 //  const
-//    protected = 5;
-  protected
-    property automated: string read data;
-    property private: string read data;
-    property protected: string read data;
-    property public: string read data;
-    property published: string read data;
-    property strict: string read data;
-    property sealed: string read data;
-    property abstract: string read data;
-    property readonly: string read data;
-    property writeonly: string read data;
-    property dispid: string read data;
-    property default: string read data;
-    property stored: string read data;
-    property index: string read data;
-    property register: string read data;
-    property safecall: string read data;
-    property stdcall: string read data;
-    property cdecl: string read data;
-    property varargs: string read data;
-    property winapi: string read data;
-  end;
+//      MaxValue = 127;
+//      MinValue = -128;
+//    class function Get1: Integer; static;
+//  end;
+//
+//  class function TShortIntHelper.Get1: Integer;
+//  begin
+//    Result := 1;
+//  end;
+//
+//  procedure public;
+//  begin
+//  end;
+//
+//  function TTestClass2.read: read;
+//  begin
+//    Result := 0;
+//  end;
+//
+//function CoRevokeMallocSpy: integer stdcall;
+//begin
+//  Result := 0;
+//end;
+//
+//var
+//  automated,
+//  on: Integer;
+//
+//const
+//  CX = IMyDisp;
+//
+//type
+//  TStatic = record
+//    class var SVar: Integer;
+//  end;
+//  PStatic = ^TStatic;
+//
+//procedure TestStaticAccess;
+//var
+//  Ptr: PStatic;
+//begin
+//  var R1 := Ptr.SVar;
+//  var R2 := TStatic.SVar;
+//  //var R3 := PStatic.SVar;
+//end;
+//
+//procedure TestAddrOperator;
+//type
+//  TSProc = procedure;
+//var
+//  LInt: Integer;
+//  LDbl: Double;
+//  LProc: TSProc;
+//begin
+//  var p1 := @Lint;
+//  var p2: PDouble := @LDbl;
+//  var p3 := @TestStaticAccess;
+//
+////  LInt := P1^;
+//  LDbl := P2^;
+//  LProc := p1;
+//end;
+//
+//type
+//  TDateTime1 = type Double;
+//
+//  TTimeSpan1 = record
+//    class operator Add(const Left: TDateTime1; Right: TTimeSpan1): TDateTime1;
+//    class operator Add(const Left: TTimeSpan1; Right: TDateTime1): TDateTime1;
+//  end;
+//
+//  TXC1 = class
+//
+//  end;
+//
+//  TXC2 = class
+//
+//  end;
+//
+//  TXC1Class = class of TXC1;
+//  TXC2Class = class of TXC2;
+//
+//  IXC1 = interface
+//
+//  end;
+//
+//  IXC2 = interface
+//
+//  end;
+//
+//  IXC3 = interface(IXC1)
+//
+//  end;
+//
+//  TXC3 = class(TInterfacedObject, IXC3)
+//
+//  end;
+//
+//class operator TTimeSpan1.Add(const Left: TDateTime1; Right: TTimeSpan1): TDateTime1;
+//begin
+//  Result := 0;
+//end;
+//
+//class operator TTimeSpan1.Add(const Left: TTimeSpan1; Right: TDateTime1): TDateTime1;
+//begin
+//  Result := 0;
+//end;
+//
+//procedure TestTimeSpan1;
+//var
+//  LDt: TDateTime1;
+//  LTs: TTimeSpan1;
+//begin
+//  LDt := LDt + 0.5;
+//  LDt := LTs + LDt;
+//  LDt := LDt + LTs;
+////  if LTs = LTs then
+////    sleep(1);
+//end;
+//
+//procedure TestOperators;
+//type
+//  {$POINTERMATH ON}
+//  PInteger2 = ^PInteger;
+//  {$POINTERMATH OFF}
+//  PByte2 = ^Byte;
+//var
+//  Int1: Integer;
+//  Flt1, Flt2: Double;
+//  C1: TC1;
+//  C2: TC2;
+//  Cls1: TC1Class;
+//  Cls2: TC2Class;
+//  CX1: TXC1;
+//  CX2: TXC2;
+//  CX3: TXC3;
+//  XCls1: TXC1Class;
+//  XCls2: TXC2Class;
+//  Intf1: IXC1;
+//  Intf2: IXC2;
+//  Intf3: IXC3;
+//  Bl: Boolean;
+//  t: TStartupInfo;
+//  Ptr: Pointer;
+//  Arr1: array of Integer;
+//  Arr2: array of Integer;
+//  ArrC: array of AnsiChar;
+//
+//  NPtr: PControlListItem;
+//  PInt: PInteger;
+//  PInt2: PInteger2;
+//  PByt: PByte;
+//  PByt2: PByte2;
+//  PAChr: PAnsiChar;
+//  PUChr: PChar;
+//  PWChr: PWideChar;
+//  AStr: AnsiString;
+//  UStr: string;
+//
+//begin
+//  Flt1 := 1;
+//  Int1 := 1;
+//  Flt2 := Int1 / Flt1;
+//
+//  if C1 <> C2 then;
+//  if Cls1 <> Cls2 then
+//  //if CX1 <> CX2 then;
+//  //if XCls1 <> XCls2 then
+//
+//  if C1 <> Ptr then;
+//  if Arr1 <> nil then;
+//  if Arr1 <> Ptr then;
+//  if C1 <> Ptr then;
+//
+//  if PByt <> Ptr then;
+//
+//
+//
+//  // if PInt > PInt then;
+//  if PAChr > PInt then;
+//  if PUChr > PInt then;
+//  if PInt2 > PInt2 then;
+//  if PAChr < NPtr then;
+//
+//  if PAChr = AStr then;
+//  if PAChr < UStr then;
+//  if PUChr = AStr then;
+//  if PUChr < UStr then;
+//  if PWChr = AStr then;
+//  if PWChr < UStr then;
+//
+//  //if PAChr < ArrC then;
+//
+//  if PInt2 > PByt then;
+//  //if PInt > PByt then;
+//
+//  // if Intf1 <> Ptr then;
+//  //if Intf1 <> Intf2 then;
+//  if Intf1 <> Intf3 then;
+//  if Intf1 <> Intf3 then;
+//  //if Intf3 <> CX3 then;
+//end;
+//
+//initialization
+//  Test0;
+//  AliasTest;
+//  TestOperators;
 
-  read = integer;
+{ TTestData }
 
-  TTestClass2 = record
-    function read: read;
-    property _read: read read read;
-  end;
-
-  TTestRecord2 = record
-    on,
-    protected,
-    sealed,
-    abstract,
-    readonly,
-    writeonly,
-    dispid,
-    default,
-    stored,
-    index,
-    register,
-    safecall,
-    stdcall,
-    cdecl,
-    assembler,
-    export,
-    helper,
-    forward,
-    virtual,
-    override,
-    varargs: string;
-  end;
-
-  package = class
-    on,
-    protected,
-    sealed,
-    abstract,
-    readonly,
-    writeonly,
-    dispid,
-    default,
-    stored,
-    index,
-    register,
-    safecall,
-    stdcall,
-    cdecl,
-    assembler,
-    export,
-    helper,
-    forward,
-    virtual,
-    override,
-    varargs: string;
-  end;
-
-  TShortIntHelper = record helper for ShortInt
-  const
-      MaxValue = 127;
-      MinValue = -128;
-    class function Get1: Integer; static;
-  end;
-
-  class function TShortIntHelper.Get1: Integer;
-  begin
-    Result := 1;
-  end;
-
-  procedure public;
-  begin
-  end;
-
-  function TTestClass2.read: read;
-  begin
-  end;
-
-function CoRevokeMallocSpy: integer stdcall;
+constructor TTestData.Create(const AFileName: string; ANodeType: TNodeType);
 begin
-
+  FNodeType := ANodeType;
+  SetFilePath(AFileName);
 end;
 
-var
-  automated,
-  on: Integer;
-
-const
-  CX = IMyDisp;
-
-type
-  TStatic = record
-    class var SVar: Integer;
+function TTestData.GetFailed: Boolean;
+begin
+  Result := FFailed;
+  if (FNodeType = ntFolder) and Assigned(FTestNode) then
+  begin
+    var LChildNode := FTestNode.FirstChild;
+    while Assigned(LChildNode) do
+    begin
+      var LTestData := LChildNode.GetData<TTestData>;
+      Result := LTestData.Failed;
+      if Result then
+        Exit;
+      LChildNode := LChildNode.NextSibling;
+    end;
   end;
-  PStatic = ^TStatic;
-
-procedure TestStaticAccess;
-var
-  Ptr: PStatic;
-begin
-  var R1 := Ptr.SVar;
-  var R2 := TStatic.SVar;
-  //var R3 := PStatic.SVar;
 end;
 
-procedure TestAddrOperator;
-type
-  TSProc = procedure;
-var
-  LInt: Integer;
-  LDbl: Double;
-  LProc: TSProc;
+procedure TTestData.SetFilePath(const Value: string);
 begin
-  var p1 := @Lint;
-  var p2: PDouble := @LDbl;
-  var p3 := @TestStaticAccess;
-
-//  LInt := P1^;
-  LDbl := P2^;
-  LProc := p1;
+  FFilePath := Value;
+  if FNodeType = ntFolder then
+  begin
+    // take latest path segment as a name
+    var LPathArray := ExcludeTrailingPathDelimiter(Value).Split([PathDelim]);
+    if Length(LPathArray) > 0 then
+      FCaption := LPathArray[Length(LPathArray) - 1];
+  end else
+  begin
+    FCaption := ExtractFileName(Value);
+    FCaption := FCaption.Replace(ExtractFileExt(FCaption), '');
+  end;
 end;
-
-initialization
-  Test0;
-  AliasTest;
 
 end.

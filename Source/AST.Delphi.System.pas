@@ -2,10 +2,9 @@
 
 interface
 
-{$I AST.Parser.Defines.inc}
-
 uses System.Classes,
      System.SysUtils,
+     AST.Pascal.Intf,
      AST.Pascal.Parser,
      AST.Delphi.Classes,
      AST.Delphi.Declarations,
@@ -46,9 +45,8 @@ type
     function Process(var EContext: TEContext): TIDExpression; virtual;
   end;
 
-
   TSysFunctionContext = record
-    UN: TASTDelphiUnit;
+    Module: IASTPascalUnit;
     Scope: TScope;
     ParamsStr: string;
     ArgsCount: Integer;
@@ -121,9 +119,7 @@ type
     ExplicitRangeFromAny,
     ExplicitRecordToAny,
     ExplicitStaticArrayToAny,
-    ExplicitDynArrayToAny,
-    ExplicitVariantToAny,
-    ExplicitVariantFromAny: TIDOperator;
+    ExplicitDynArrayToAny: TIDOperator;
     // any cast
     IsOrdinal: TIDOperator;
     // in
@@ -137,9 +133,6 @@ type
     Subtract_Set: TIDOperator;
     Equal_Set: TIDOperator;
     NotEqual_Set: TIDOperator;
-    // DynArray
-    Add_DynArray,
-    Equal_DynArray: TIDOperator;
     Equal_NullPtr: TIDOperator;
     NotEqual_NullPtr: TIDOperator;
     procedure Init(Scope: TScope);
@@ -177,8 +170,9 @@ type
     procedure SystemFixup;
     procedure InsertToScope(Declaration: TIDDeclaration); overload;
     function RegisterType(const TypeName: string; TypeClass: TIDTypeClass; DataType: TDataTypeID): TIDType;
-    function RegisterOrdinal(const TypeName: string; DataType: TDataTypeID; LowBound: Int64; HighBound: UInt64): TIDType;
-    function RegisterTypeAlias(const TypeName: string; OriginalType: TIDType): TIDAliasType;
+    function RegisterOrdinal(const TypeName: string; DataType: TDataTypeID; LowBound: Int64; HighBound: UInt64;
+                             ATypeClass: TIDOrdinalTypeClass): TIDType;
+    function RegisterTypeAlias(const TypeName: string; OriginalType: TIDType): TIDType;
     function RegisterPointer(const TypeName: string; TargetType: TIDType): TIDPointer;
     function RegisterConstInt(const Name: string; DataType: TIDType; Value: Int64): TIDIntConstant;
     function RegisterConstStr(Scope: TScope; const Name: string; const Value: string ): TIDStringConstant;
@@ -244,6 +238,8 @@ type
     function Get_DateTimeType: TIDType;
     function Get_DateType: TIDType;
     function Get_TimeType: TIDType;
+    function Get_UnknownType: TIDUnknown;
+    function Get_UnknownVariable: TIDVariable;
   protected
     function GetSystemDeclarations: PDelphiSystemDeclarations; override;
   public
@@ -314,6 +310,8 @@ type
     property _Void: TIDType read Get_Void;
     property _ResStringRecord: TIDType read Get_ResStringRecord;
     property _EmptySetType: TIDSet read Get_EmptySetType;
+    property _UnknownType: TIDUnknown read Get_UnknownType;
+    property _UnknownVariable: TIDVariable read Get_UnknownVariable;
     property Operators: TSystemOperatos read fOperators;
   end;
 
@@ -356,7 +354,7 @@ class function TIDBuiltInFunction.CreateTMPExpr(const EContext: TEContext; const
 var
   Decl: TIDVariable;
 begin
-  Decl := EContext.SContext.Proc.GetTMPVar(DataType);
+  Decl := EContext.SContext.Proc.GetTMPVar(EContext.Scope, DataType);
   Result := TIDExpression.Create(Decl);
 end;
 
@@ -433,9 +431,6 @@ begin
 
   _Variant.OverloadImplicitToAny(Operators.ImplicitVariantToAny);
   _Variant.OverloadImplicitFromAny(Operators.ImplicitVariantFromAny);
-  _Variant.OverloadExplicitToAny(Operators.ExplicitVariantToAny);
-  _Variant.OverloadExplicitFromAny(Operators.ExplicitVariantFromAny);
-
 
   // float32
   with _Float32 do begin
@@ -817,10 +812,11 @@ end;
 
 procedure TSYSTEMUnit.AddDivOperators;
 begin
-  AddBinarOperator(opDivide, _Int8, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64], _Float64);
-  AddBinarOperator(opDivide, _Int16, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64], _Float64);
-  AddBinarOperator(opDivide, _Int32, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64], _Float64);
-  AddBinarOperator(opDivide, _Int64, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64], _Float64);
+  AddBinarOperator(opDivide, _Int8, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
+  AddBinarOperator(opDivide, _Int16, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
+  AddBinarOperator(opDivide, _Int32, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
+  AddBinarOperator(opDivide, _Int64, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
+  AddBinarOperator(opDivide, _UInt64, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
 
   AddBinarOperator(opDivide, _Float32, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
   AddBinarOperator(opDivide, _Float64, [_Int8, _UInt8, _Int16, _UInt16, _Int32, _UInt32, _Int64, _UInt64, _Float32, _Float64], _Float64);
@@ -857,6 +853,7 @@ procedure TSYSTEMUnit.AddBitwiseOperators;
       AddUnarOperator(Op, DataTypes[i], DataTypes[i]);
     AddUnarOperator(Op, _Variant, _Variant);
   end;
+
   procedure BitwiseOp(Op: TOperatorID);
   var
     i, j: TDataTypeID;
@@ -867,11 +864,12 @@ procedure TSYSTEMUnit.AddBitwiseOperators;
 
     AddBinarOperator(Op, _Variant, _Variant, _Variant);
   end;
+
 begin
   UnarOp(opNot);
-  BitwiseOp(opAnd);
-  BitwiseOp(opOr);
-  BitwiseOp(opXor);
+//  BitwiseOp(opAnd);
+//  BitwiseOp(opOr);
+//  BitwiseOp(opXor);
   BitwiseOp(opShiftLeft);
   BitwiseOp(opShiftRight);
 end;
@@ -975,7 +973,6 @@ end;
 function TSYSTEMUnit.RegisterType(const TypeName: string; TypeClass: TIDTypeClass; DataType: TDataTypeID): TIDType;
 begin
   Result := TypeClass.CreateAsSystem(IntfScope, TypeName);
-  Result.Elementary := True;
   Result.DataTypeID := DataType;
   Result.ItemType := itType;
   InsertToScope(Result);
@@ -985,31 +982,32 @@ end;
 procedure TSYSTEMUnit.RegisterTypes;
 begin
   //===============================================================
-  fDecls._Int8 := RegisterOrdinal('ShortInt', dtInt8, MinInt8, MaxInt8);
-  fDecls._Int16 := RegisterOrdinal('SmallInt', dtInt16, MinInt16, MaxInt16);
-  fDecls._Int32 := RegisterOrdinal('Integer', dtInt32, MinInt32, MaxInt32);
-  fDecls._Int64 := RegisterOrdinal('Int64', dtInt64, MinInt64, MaxInt64);
-  fDecls._UInt8 := RegisterOrdinal('Byte', dtUInt8, 0, MaxUInt8);
-  fDecls._UInt16 := RegisterOrdinal('Word', dtUInt16, 0, MaxUInt16);
-  fDecls._UInt32 := RegisterOrdinal('Cardinal', dtUInt32, 0, MaxUInt32);
-  fDecls._UInt64 := RegisterOrdinal('UInt64', dtUInt64, 0, MaxUInt64);
+  fDecls._Int8 := RegisterOrdinal('ShortInt', dtInt8, MinInt8, MaxInt8, TBuiltin_IntType);
+  fDecls._Int16 := RegisterOrdinal('SmallInt', dtInt16, MinInt16, MaxInt16, TBuiltin_IntType);
+  fDecls._Int32 := RegisterOrdinal('Integer', dtInt32, MinInt32, MaxInt32, TBuiltin_IntType);
+  fDecls._Int64 := RegisterOrdinal('Int64', dtInt64, MinInt64, MaxInt64, TBuiltin_IntType);
+  fDecls._UInt8 := RegisterOrdinal('Byte', dtUInt8, 0, MaxUInt8, TBuiltin_IntType);
+  fDecls._UInt16 := RegisterOrdinal('Word', dtUInt16, 0, MaxUInt16, TBuiltin_IntType);
+  fDecls._UInt32 := RegisterOrdinal('Cardinal', dtUInt32, 0, MaxUInt32, TBuiltin_IntType);
+  fDecls._UInt64 := RegisterOrdinal('UInt64', dtUInt64, 0, MaxUInt64, TBuiltin_IntType);
   fDecls._NativeInt := RegisterOrdinal('NativeInt', dtNativeInt,
                                        Package.Target.MinNativeInt,
-                                       Package.Target.MaxNativeInt);
+                                       Package.Target.MaxNativeInt, TBuiltin_IntType);
   fDecls._NativeUInt := RegisterOrdinal('NativeUInt', dtNativeUInt,
                                         Package.Target.MinNativeUInt,
-                                        Package.Target.MaxNativeUInt);
-  fDecls._Float32 := RegisterType('Single', TIDFloat, dtFloat32);
-  fDecls._Float64 := RegisterType('Double', TIDFloat, dtFloat64);
+                                        Package.Target.MaxNativeUInt, TBuiltin_IntType);
+  fDecls._Float32 := RegisterType('Single', TBuiltin_FltType, dtFloat32);
+  fDecls._Float64 := RegisterType('Double', TBuiltin_FltType, dtFloat64);
   fDecls._Float80 := RegisterType('Extended', TBuiltin_Extended, dtFloat80);
   fDecls._Currency := RegisterType('Currency', TBuiltin_Currency, dtCurrency);
   fDecls._Comp := RegisterType('Comp', TBuiltin_Comp, dtComp);
+  fDecls._Real48 := RegisterType('Real48', TBuiltin_Real48, dtFloat64);
   //===============================================================
-  fDecls._Boolean := RegisterOrdinal('Boolean', dtBoolean, 0, 1);
+  fDecls._Boolean := RegisterOrdinal('Boolean', dtBoolean, 0, 1, TBuiltin_Boolean);
   _Boolean.OverloadExplicitFromAny(Operators.IsOrdinal);
 
-  fDecls._AnsiChar := RegisterOrdinal('AnsiChar', dtAnsiChar, 0, MaxUInt8);
-  fDecls._WideChar := RegisterOrdinal('Char', dtChar, 0, MaxUInt16);
+  fDecls._AnsiChar := RegisterOrdinal('AnsiChar', dtAnsiChar, 0, MaxUInt8, TBuiltin_AnsiChar);
+  fDecls._WideChar := RegisterOrdinal('Char', dtChar, 0, MaxUInt16, TBuiltin_UnicodeChar);
   //===============================================================
   fDecls._ShortString := RegisterType('ShortString', TBuiltin_ShortString, dtShortString);
   TIDString(_ShortString).ElementDataType := _AnsiChar;
@@ -1017,12 +1015,13 @@ begin
   fDecls._AnsiString := RegisterType('AnsiString', TBuiltin_AnsiString, dtAnsiString);
   TIDString(_AnsiString).ElementDataType := _AnsiChar;
   //===============================================================
-  fDecls._UnicodeString := RegisterType('String', TIDString, dtString);
+  fDecls._UnicodeString := RegisterType('String', TBuiltin_UnicodeString, dtString);
   TIDString(_UnicodeString).ElementDataType := _WideChar;
   //===============================================================
-  fDecls._Variant := RegisterType('Variant', TIDVariant, dtVariant);
+  fDecls._Variant := RegisterType('Variant', TBuiltin_Variant, dtVariant);
+  fDecls._OleVariant := RegisterType('OleVariant', TBuiltin_OleVariant, dtVariant);
   //===============================================================
-  fDecls._WideString := RegisterType('WideString', TIDString, dtWideString);
+  fDecls._WideString := RegisterType('WideString', TBuiltin_WideString, dtWideString);
   TIDString(_WideString).ElementDataType := _WideChar;
   //===============================================================
   fDecls._OpenString := RegisterType('OpenString', TBuiltin_OpenString, dtAnsiString) as TIDString;
@@ -1045,8 +1044,6 @@ begin
 
   // null ptr type (special type for "nil" constant)
   fDecls._NullPtrType := TIDNullPointerType.CreateAsSystem(IntfScope, 'null ptr');
-//  fDecls._NullPtrType.AddBinarySysOperator(opEqual, fOperators.Equal_NullPtr);
-//  fDecls._NullPtrType.AddBinarySysOperator(opNotEqual, fOperators.NotEqual_NullPtr);
   // null ptr type constant
   fDecls._NullPtrConstant := TIDIntConstant.Create(IntfScope, Identifier('nil'), fDecls._NullPtrType, 0);
   fDecls._NullPtrExpression := TIDExpression.Create(fDecls._NullPtrConstant);
@@ -1067,6 +1064,14 @@ begin
   IntfScope.InsertID(fDecls._Untyped);
   fDecls._Untyped.OverloadExplicitToAny(Operators.ExplicitUntypedToAny);
 
+  // special "unknown" type
+  fDecls._UnknownType := TIDUnknown.CreateAsSystem(IntfScope, '<unknown>');
+  fDecls._UnknownVariable := TIDVariable.CreateAsSystem(IntfScope, '<unknown>');
+  fDecls._UnknownVariable.DataType := fDecls._UnknownType;
+  fDecls._UnknownConstant := TIDIntConstant.CreateAsSystem(IntfScope, '<unknown>', fDecls._UnknownType);
+  fDecls._UnknownRangeConstant := TIDRangeConstant.CreateAsSystem(IntfScope, '<unknown>', fDecls._UnknownType);
+  fDecls._UnknownProcedure := TIDProcedure.CreateAsSystem(IntfScope, '<unknown>');
+  fDecls._UnknownProcedure.DataType := _UnknownType;
 
   // Delphi system aliases
   RegisterTypeAlias('LongInt', _Int32);
@@ -1080,17 +1085,18 @@ begin
   RegisterTypeAlias('ByteBool', _Boolean);
   RegisterTypeAlias('WordBool', _Boolean);
   RegisterTypeAlias('LongBool', _Boolean);
-  RegisterTypeAlias('OleVariant', _Variant);
 
   // PAnsiChar
-  fDecls._PAnsiChar := RegisterType('PAnsiChar', TIDPointer, dtPAnsiChar);
+  fDecls._PAnsiChar := RegisterType('PAnsiChar', TBuiltin_PAnsiChar, dtPAnsiChar);
   TIDPointer(fDecls._PAnsiChar).ReferenceType := _AnsiChar;
+  TIDPointer(fDecls._PAnsiChar).PointerMath := True;
   fDecls._PAnsiChar.OverloadImplicitTo(_Variant);
   fDecls._PAnsiChar.CreateStandardOperators;
 
   // PWideChar
-  fDecls._PWideChar := RegisterType('PWideChar', TIDPointer, dtPWideChar);
+  fDecls._PWideChar := RegisterType('PWideChar', TBuiltin_PWideChar, dtPWideChar);
   TIDPointer(fDecls._PWideChar).ReferenceType := _WideChar;
+  TIDPointer(fDecls._PWideChar).PointerMath := True;
   fDecls._PWideChar.OverloadImplicitTo(_Variant);
   fDecls._PWideChar.CreateStandardOperators;
 
@@ -1126,6 +1132,7 @@ begin
   fDecls._EmptyStrExpression := TIDExpression.Create(fDecls._EmptyStrConstant);
   // empty set type
   fDecls._EmptySetType := TIDSet.CreateAsSystem(IntfScope, '');
+  fDecls._EmptySetType.BaseType := _Int32 as TIDOrdinal;
   // constant "[]"
   fDecls._EmptyArrayConstant := TIDDynArrayConstant.CreateAsAnonymous(IntfScope, _EmptySetType, []);
 
@@ -1158,9 +1165,11 @@ procedure TSYSTEMUnit.SearchSystemTypes;
 begin
   // todo: use forward declaration instead
   fDecls._TObject := GetPublicClass('TObject');
+  fDecls._IInterface := GetPublicInterface('IInterface');
   fDecls._ResStringRecord := GetPublicType('PResStringRec');
   fDecls._TVarRec := GetPublicType('TVarRec');
   fDecls._TVarData := GetPublicType('TVarData');
+  fDecls._tagVARIANT := GetPublicType('tagVARIANT');
   fDecls._TTypeKind := GetPublicType('TTypeKind') as TIDEnum;
   fDecls._DateTimeType := GetPublicType('TDateTime');
   fDecls._DateType := GetPublicType('TDate');
@@ -1176,14 +1185,8 @@ begin
   begin
     var coeffTypeType: TIDEnum := RegisterType('coeffType', TIDEnum, dtEnum) as TIDEnum;
     coeffTypeType.Items := TScope.Create(stLocal, ImplScope);
-    var Item := TIDIntConstant.Create(coeffTypeType.Items, TIdentifier.Make('cHi'));
-    Item.DataType := coeffTypeType;
-    Item.Value := 0;
-    InsertToScope(coeffTypeType.Items, Item);
-    Item := TIDIntConstant.Create(coeffTypeType.Items, TIdentifier.Make('cLo'));
-    Item.DataType := coeffTypeType;
-    Item.Value := 1;
-    InsertToScope(coeffTypeType.Items, Item);
+    coeffTypeType.AddItem('cHi', 0);
+    coeffTypeType.AddItem('cLo', 1);
     coeffTypeType.LowBound := 0;
     coeffTypeType.HighBound := 1;
   end;
@@ -1198,6 +1201,7 @@ end;
 procedure TSYSTEMUnit.RegisterBuiltinFunctions;
 begin
   RegisterBuiltin(TSF_Abs);
+  RegisterBuiltin(TSF_Addr);
   RegisterBuiltin(TSF_Assert);
   RegisterBuiltin(TSF_Assigned);
   RegisterBuiltin(TSF_AtomicCmpExchange);
@@ -1218,6 +1222,7 @@ begin
   RegisterBuiltin(TSCTF_GetTypeKind);
   RegisterBuiltin(TSCTF_HasWeakRef);
   RegisterBuiltin(TSCTF_Declared);
+  RegisterBuiltin(TSCTF_StaticAssert);
   RegisterBuiltin(TCT_Break);
   RegisterBuiltin(TCT_Continue);
   RegisterBuiltin(TSF_Delete);
@@ -1225,6 +1230,7 @@ begin
   RegisterBuiltin(TSF_Exclude);
   RegisterBuiltin(TSF_FreeMem);
   RegisterBuiltin(TSF_FillChar);
+  RegisterBuiltin(TSF_Finalize);
   RegisterBuiltin(TSF_GetMem);
   RegisterBuiltin(TSF_GetDir);
   RegisterBuiltin(TSF_Halt);
@@ -1252,12 +1258,14 @@ begin
   RegisterBuiltin(TSF_SetLength);
   RegisterBuiltin(TSF_SetString);
   RegisterBuiltin(TSF_Swap);
+  RegisterBuiltin(TSF_Slice);
   RegisterBuiltin(TSF_Trunc);
   RegisterBuiltin(TSF_Val);
   RegisterBuiltin(TSF_ReturnAddress);
   RegisterBuiltin(TSF_VarCast);
   RegisterBuiltin(TSF_VarClear);
-
+  RegisterBuiltin(TSF_Write);  // not needed for now
+  RegisterBuiltin(TSF_Writeln); // not needed for now
 
   if Project.Target = TWINX64_Target then
   begin
@@ -1269,6 +1277,43 @@ begin
     RegisterBuiltin(TSF_VarArgEnd);
   end;
 
+  CompileSource(IntfScope, 'procedure VarArrayRedim(var V: Variant; HighBound: Integer);');
+
+  // initial stuff for File/Text file functionality
+  CompileSource(IntfScope, 'type File = pointer;');
+  CompileSource(IntfScope, 'type TextFile = pointer;');
+
+  CompileSource(IntfScope, 'procedure AssignFile(var F; const FileName: string);');
+  CompileSource(IntfScope, 'procedure Reset(var F; RecordSize: Word = 0);');
+  CompileSource(IntfScope, 'procedure Rewrite(var F; RecordSize: Word = 0);');
+  CompileSource(IntfScope, 'procedure Append(var F: Text);');
+  CompileSource(IntfScope, 'procedure CloseFile(var F);');
+
+  CompileSource(IntfScope, 'procedure BlockRead(var F; var Buf; Count: Integer; var Result: Integer); overload;');
+  CompileSource(IntfScope, 'procedure BlockRead(var F; var Buf; Count: Integer); overload;');
+  CompileSource(IntfScope, 'procedure BlockWrite(var F; const Buf; Count: Integer; var Result: Integer); overload;');
+  CompileSource(IntfScope, 'procedure BlockWrite(var F; const Buf; Count: Integer); overload;');
+
+  CompileSource(IntfScope, 'procedure Read(var F: Text; var V1); cdecl; varargs;');
+  CompileSource(IntfScope, 'procedure ReadLn(var F: Text; var V1); cdecl; varargs;');
+
+  // declared as BuiltIn since it has such declarations:
+  //   procedure Write([var F: File]; P1; [ ..., PN]); overload;
+  //   procedure Writeln([var F: File]; [ P1; [ ..., PN] ]); overload;
+  //
+  //  CompileSource(IntfScope, 'procedure Write(var F: Text; var V1); cdecl; varargs;');
+  //  CompileSource(IntfScope, 'procedure WriteLn(var F: Text; var V1); cdecl; varargs;');
+
+  CompileSource(IntfScope, 'procedure Seek(var F; N: Integer);');
+  CompileSource(IntfScope, 'function FilePos(var F): Integer;');
+  CompileSource(IntfScope, 'function FileSize(var F): Integer;');
+  CompileSource(IntfScope, 'function Eof(var F: Text): Boolean; overload;');
+  CompileSource(IntfScope, 'function Eof(var F): Boolean; overload;');
+  CompileSource(IntfScope, 'function Eoln(var F: Text): Boolean; overload;');
+  CompileSource(IntfScope, 'function Eoln: Boolean; overload;');
+  CompileSource(IntfScope, 'procedure Erase(var F);');
+  CompileSource(IntfScope, 'procedure Rename(var F; const NewName: string);');
+
   RegisterVariable(ImplScope, 'ReturnAddress', _Pointer);
   RegisterConstStr(ImplScope, 'libmmodulename', '');
   RegisterConstInt('CompilerVersion', _Int32, 35); // Delphi 11.x
@@ -1278,9 +1323,10 @@ begin
   RegisterBuiltin(TSCTF_Scope);
 end;
 
-function TSYSTEMUnit.RegisterOrdinal(const TypeName: string; DataType: TDataTypeID; LowBound: Int64; HighBound: UInt64): TIDType;
+function TSYSTEMUnit.RegisterOrdinal(const TypeName: string; DataType: TDataTypeID; LowBound: Int64; HighBound: UInt64;
+  ATypeClass: TIDOrdinalTypeClass): TIDType;
 begin
-  Result := RegisterType(TypeName, TIDOrdinal, DataType);
+  Result := RegisterType(TypeName, ATypeClass, DataType);
   TIDOrdinal(Result).LowBound := LowBound;
   TIDOrdinal(Result).HighBound := Int64(HighBound);
   TIDOrdinal(Result).SignedBound  := LowBound < 0;
@@ -1290,8 +1336,9 @@ function TSYSTEMUnit.Compile(ACompileIntfOnly: Boolean; RunPostCompile: Boolean 
 begin
   Result := CompileInProgress;
   try
-    RegisterBuiltinFunctions;
-    SystemFixup;
+    // run it once
+    if fCompiled = CompileNone then
+      SystemFixup;
     Result := inherited Compile(ACompileIntfOnly, {RunPostCompile:} False);
     if Result = CompileSuccess then
     begin
@@ -1301,8 +1348,8 @@ begin
   except
     on e: ECompilerStop do Exit;
     on e: ECompilerSkip do Exit(CompileSkip);
-    on e: ECompilerAbort do PutMessage(ECompilerAbort(e).CompilerMessage^);
-    on e: Exception do PutMessage(cmtInteranlError, e.Message);
+    on e: ECompilerAbort do PutMessage(ECompilerAbort(e).CompilerMessage);
+    on e: Exception do PutMessage(cmtInteranlError, e.Message, Lexer_Position, {ACritical:} True);
   end;
 end;
 
@@ -1310,7 +1357,7 @@ constructor TSYSTEMUnit.Create(const Project: IASTProject; const FileName: strin
 begin
   inherited Create(Project, FileName, Source);
 
-  fDecls := TDelphiBuiltinTypes.Create;
+  fDecls := TDelphiBuiltinTypes.Create(Self.Project);
 
   fSysDecls := fDecls;
 
@@ -1329,6 +1376,7 @@ begin
   fDecls._OrdinalType := TIDOrdinal.CreateAsSystem(IntfScope, 'ordinal');
 
   RegisterTypes;
+  RegisterBuiltinFunctions;
 //  fDecls._PointerType.CreateStandardOperators;
 //  fDecls._PAnsiChar.CreateStandardOperators;
 //  fDecls._PChar.CreateStandardOperators;
@@ -1581,6 +1629,16 @@ begin
   Result := fDecls._UnicodeString;
 end;
 
+function TSYSTEMUnit.Get_UnknownType: TIDUnknown;
+begin
+  Result := fDecls._UnknownType;
+end;
+
+function TSYSTEMUnit.Get_UnknownVariable: TIDVariable;
+begin
+  Result := fDecls._UnknownVariable;
+end;
+
 function TSYSTEMUnit.Get_Untyped: TIDType;
 begin
   Result := fDecls._Untyped;
@@ -1642,12 +1700,12 @@ begin
   Result := Compile({ACompileIntfOnly:} True);
 end;
 
-function TSYSTEMUnit.RegisterTypeAlias(const TypeName: string; OriginalType: TIDType): TIDAliasType;
+function TSYSTEMUnit.RegisterTypeAlias(const TypeName: string; OriginalType: TIDType): TIDType;
 begin
-  Result := TIDAliasType.CreateAliasAsSystem(IntfScope, TypeName, OriginalType);
-  Result.Elementary := True;
-  InsertToScope(Result);
-  AddType(Result);
+  if Assigned(IntfScope.InsertNode(TypeName, OriginalType)) then
+    raise Exception.CreateFmt('Unit SYSTEM: ' + sIdentifierRedeclaredFmt, [TypeName]);
+
+  Result := OriginalType;
 end;
 
 function TSYSTEMUnit.RegisterConstInt(const Name: string; DataType: TIDType; Value: Int64): TIDIntConstant;
@@ -1728,8 +1786,6 @@ begin
   ExplicitRecordToAny := TSysExplicitRecordToAny.CreateAsSystem(Scope);
   ExplicitStaticArrayToAny := TSysExplicitStaticArrayToAny.CreateAsSystem(Scope);
   ExplicitDynArrayToAny := TSysExplicitDynArrayToAny.CreateAsSystem(Scope);
-  ExplicitVariantToAny := TSysExplicitVariantToAny.CreateAsSystem(Scope);
-  ExplicitVariantFromAny := TSysExplicitVariantFromAny.CreateAsSystem(Scope);
   // any cast
   IsOrdinal := TSysTypeCast_IsOrdinal.CreateAsSystem(Scope);
 
@@ -1745,8 +1801,6 @@ begin
   Equal_Set := TSys_Equal_Set.CreateAsSystem(Scope);
   NotEqual_Set := TSys_NotEqual_Set.CreateAsSystem(Scope);
 
-  Add_DynArray := TSys_Add_DynArray.CreateAsSystem(Scope);
-  Equal_DynArray := TSys_Equal_DynArray.CreateAsSystem(Scope);
   Equal_NullPtr := TSys_Equal_NullPtr.CreateAsSystem(Scope);
   NotEqual_NullPtr := TSys_NotEqual_NullPtr.CreateAsSystem(Scope);
 end;

@@ -2,19 +2,18 @@ unit AST.Parser.Errors;
 
 interface
 
-uses SysUtils, AST.Parser.Messages, AST.Lexer;
+uses SysUtils, AST.Intf, AST.Lexer;
 
 type
 
   ECompilerAbort = class(EAbort)
   private
-    FCompilerMessage: TCompilerMessage;
-    function GetCompilerMessage: PCompilerMessage;
+    FCompilerMessage: IASTParserMessage;
   public
     constructor Create(const MessageText: string); overload;
     constructor Create(const MessageText: string; const SourcePosition: TTextPosition); overload;
     constructor CreateAsInteranl(const MessageText: string; const SourcePosition: TTextPosition);
-    property CompilerMessage: PCompilerMessage read GetCompilerMessage;
+    property CompilerMessage: IASTParserMessage read FCompilerMessage;
   end;
 
   ECompilerInternalError = class(ECompilerAbort);
@@ -48,6 +47,7 @@ implementation
 
 uses
   Winapi.Windows,
+  AST.Parser.Messages,
   AST.Parser.Log;
 
 constructor ECompilerAbort.Create(const MessageText: string);
@@ -68,11 +68,6 @@ begin
   FCompilerMessage := TCompilerMessage.Create(nil, cmtInteranlError, MessageText, SourcePosition);
 end;
 
-function ECompilerAbort.GetCompilerMessage: PCompilerMessage;
-begin
-  Result := addr(FCompilerMessage);
-end;
-
 { EComplilerStop }
 
 constructor ECompilerStop.Create(CompileSuccess: Boolean);
@@ -87,15 +82,22 @@ begin
 
 end;
 
+procedure DebugBreak;
+asm
+  int 3;
+end;
+
 procedure AbortWork(const Message: string; const SourcePosition: TTextPosition);
 begin
-  if BreakpointOnError then
-    asm int3 end;
+  // stop if run under IDE only
+  if (BreakpointOnError) and (System.DebugHook > 0) then
+    DebugBreak;
+
   WriteLog('ERROR: ' + Message);
   raise ECompilerAbort.Create(Message, SourcePosition);
 end;
 
-procedure AbortWork(const MessageFmt: string; const  Params: array of const; const SourcePosition: TTextPosition);
+procedure AbortWork(const MessageFmt: string; const Params: array of const; const SourcePosition: TTextPosition);
 begin
   AbortWork(Format(MessageFmt, Params), SourcePosition);
 end;
@@ -103,7 +105,7 @@ end;
 procedure AbortWorkInternal(const Message: string; const Params: array of const; const SourcePosition: TTextPosition);
 begin
   if BreakpointOnError then
-    asm int3 end;
+    DebugBreak;
   WriteLog('INTERNAL ERROR: ' + Message, Params);
   raise ECompilerInternalError.CreateAsInteranl(Format(Message, Params), SourcePosition);
 end;

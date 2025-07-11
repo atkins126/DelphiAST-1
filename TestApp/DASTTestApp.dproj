@@ -1,7 +1,7 @@
 ﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{3C2A4704-BAD3-42B6-8C41-69D707A46C18}</ProjectGuid>
-        <ProjectVersion>20.2</ProjectVersion>
+        <ProjectVersion>20.3</ProjectVersion>
         <FrameworkType>VCL</FrameworkType>
         <MainSource>DASTTestApp.dpr</MainSource>
         <Base>True</Base>
@@ -59,8 +59,8 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
-        <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
+        <DCC_DcuOutput>.\Bin\Dcu\$(Platform)\$(Config)</DCC_DcuOutput>
+        <DCC_ExeOutput>.\Bin</DCC_ExeOutput>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
@@ -72,12 +72,14 @@
         <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>
         <UWP_DelphiLogo150>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_150.png</UWP_DelphiLogo150>
         <SanitizedProjectName>DASTTestApp</SanitizedProjectName>
-        <DCC_UnitSearchPath>..\Source\;..\Source\Parser;..\Components\SynEdit\Source;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\Source\;..\Source\Lexers;..\TestScripts;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <VerInfo_Locale>1033</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProgramID=com.embarcadero.$(MSBuildProjectName);ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_DUPLICATE_CTOR_DTOR>false</DCC_DUPLICATE_CTOR_DTOR>
         <DCC_UNIT_PLATFORM>false</DCC_UNIT_PLATFORM>
         <DCC_SYMBOL_PLATFORM>false</DCC_SYMBOL_PLATFORM>
+        <DCC_NO_RETVAL>error</DCC_NO_RETVAL>
+        <DCC_UNIT_DEPRECATED>false</DCC_UNIT_DEPRECATED>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win32)'!=''">
         <DCC_UsePackage>DBXSqliteDriver;IndyIPCommon;bindcompdbx;DBXInterBaseDriver;vcl;IndyIPServer;vclactnband;vclFireDAC;IndySystem;tethering;svnui;dsnapcon;FireDACADSDriver;FireDACMSAccDriver;fmxFireDAC;vclimg;DCAExpert;TeeDB;SPR_Components;vcltouch;vcldb;bindcompfmx;svn;cxPageControlVCLD7;FireDACPgDriver;DragDropDR102T;inetdb;cxExtEditorsVCLD7;FMXTee;cxDataD7;DbxCommonDriver;FmxTeeUI;fmx;fmxdae;xmlrtl;Tee;fmxobj;vclwinx;rtl;DbxClientDriver;CustomIPTransport;vcldsnap;dbexpress;IndyCore;vclx;bindcomp;appanalytics;dsnap;IndyIPClient;cxEditorsVCLD7;bindcompvcl;dxThemeD7;SynEdit_R;cxGridVCLD7;TeeUI;VCLRESTComponents;dbxcds;VclSmp;cxTreeListVCLD7;adortl;vclie;bindengine;DBXMySQLDriver;dsnapxml;FireDACMySQLDriver;dbrtl;IndyProtocols;inetdbxpress;FireDACCommonODBC;cxLibraryVCLD7;fmxase;$(DCC_UsePackage)</DCC_UsePackage>
@@ -92,7 +94,7 @@
         <BT_BuildType>Debug</BT_BuildType>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
         <Manifest_File>$(BDS)\bin\default_app.manifest</Manifest_File>
-        <AppEnableRuntimeThemes>true</AppEnableRuntimeThemes>
+        <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -111,8 +113,8 @@
         <DCC_LargeAddressAware>true</DCC_LargeAddressAware>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
-        <AppEnableRuntimeThemes>true</AppEnableRuntimeThemes>
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
+        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
         <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
@@ -124,8 +126,8 @@
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
-        <AppEnableRuntimeThemes>true</AppEnableRuntimeThemes>
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
+        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
     </PropertyGroup>
     <ItemGroup>
         <DelphiCompile Include="$(MainSource)">
@@ -167,6 +169,145 @@
         <DCCReference Include="..\Source\AST.Parser.Log.pas"/>
         <DCCReference Include="..\Source\AST.Delphi.SysTypes.pas"/>
         <DCCReference Include="..\Source\AST.Delphi.Declarations.pas"/>
+        <DCCReference Include="AST.Utils.CmdLineParser.pas"/>
+        <DCCReference Include="..\Source\AST.JsonSchema.pas"/>
+        <DCCReference Include="..\Source\AST.Delphi.JsonSchema.pas"/>
+        <DCCReference Include="..\TestScripts\Implict\ASTTest.Implicit.Pointers.pas"/>
+        <DCCReference Include="..\TestScripts\Implict\ASTTest.Implicit.Integer.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Compare\ASTTest.Cmp.Strings.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Compare\ASTTest.Cmp.PChars.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Substruct\ASTTest.Sub.Integer.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Add\ASTTest.Add.Pointers.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Compare\ASTTest.Cmp.Pointers.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Neg\ASTTest.Operators.Neg1.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Overload\ASTTest.Ops.OverloadInHelper1.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Overload\ASTTest.Ops.ImplicitAsExplicit1.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Overload\ASTTest.Ops.OverloadWithImplicitCast.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Overload\ASTTest.Ops.OverloadLessThan1.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Addr\ASTTest.AddrOp.Addr1.pas"/>
+        <DCCReference Include="..\TestScripts\Operators\Addr\ASTTest.AddrOp.Addr2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Class1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.GenResult.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Methods.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.MethodWithConstr.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.MixedConstr.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Mixed.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Array1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Array2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Nested1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Nested2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Nested3.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Enumerator1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Enumerator2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Intf.Delegation.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCall1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCall2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCall3.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCall4.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCall5.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Constr1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Constr2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCast1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.ImplicitCast2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.RecursiveUsing1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.RecursiveUsing2.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.SmartRef1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.GenericInstantiation1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.Overload1.pas"/>
+        <DCCReference Include="..\TestScripts\Generics\ASTTest.Generics.OverloadProc1.pas"/>
+        <DCCReference Include="..\TestScripts\Ordinals\ASTTest.Ordian.Enums.Init.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.External1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.External2.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.DiffSigns1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.Overloads.Generics1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.Overloads.Generics2.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.Overloads.ImplicitCall1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.Overloads.ImplicitCall2.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.OverloadDecl1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.OverloadDecl2.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Overloads\ASTTest.Procs.OverloadDecl3.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.ArrayProp1.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.ArrayPropOverload1.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.ArrayPropOverload2.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.InheritedProp1.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.OverloadGetSet.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.PropWithIndex1.pas"/>
+        <DCCReference Include="..\TestScripts\Properties\ASTTest.Props.PropWithIndex2.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\callconv\ASTTest.Procs.CallConv.Register1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.Assembler1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.MixingDirectives1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.ParamName1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\ASTTest.Procs.ImplicitCall1.pas"/>
+        <DCCReference Include="..\TestScripts\Procedures\Closures\ASTTest.Procs.ClosureWithInherited1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.Base.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\Constructors\ASTTest.Classes.Construct1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\Constructors\ASTTest.Classes.Construct2.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.Inherited1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.Inherited2.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.Inherited3.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.Inherited4.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.MethodsRedefine1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.MethodsRedefine2.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.VirtualsOverlod1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.DiffSigns1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\Inheritance\ASTTest.Classes.Inheritance.Generics1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.OverloadMethodNoParams1.pas"/>
+        <DCCReference Include="..\TestScripts\Classes\ASTTest.Classes.OverloadMethodNoParams2.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.Helper1.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.Helper2.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.InheritedHelper.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.HelperForNested1.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.HelperForAliases1.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.HelperForAliases2.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.HelperForAliases3.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.Declaration.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.Main.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.ClassVar.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.ClassCtor.pas"/>
+        <DCCReference Include="..\TestScripts\Helpers\ASTTest.Helpers.GenericTypeInHelper1.pas"/>
+        <DCCReference Include="..\TestScripts\Loops\ASTTest.Loops.For1.pas"/>
+        <DCCReference Include="..\TestScripts\Loops\ASTTest.Loops.ForIn1.pas"/>
+        <DCCReference Include="..\TestScripts\Variants\ASTTest.Variants.Variant1.pas"/>
+        <DCCReference Include="..\TestScripts\Variants\ASTTest.Variants.Cmp.pas"/>
+        <DCCReference Include="..\TestScripts\Variants\ASTTest.Variants.TypeCast1.pas"/>
+        <DCCReference Include="..\TestScripts\Variants\ASTTest.Variants.TypeCast2.pas"/>
+        <DCCReference Include="..\TestScripts\RTL\ASTTest.RTL.TDictionaty1.pas"/>
+        <DCCReference Include="..\TestScripts\RTL\ASTTest.RTL.IEnumerable1.pas"/>
+        <DCCReference Include="..\TestScripts\RTL\ASTTest.RTL.SysUtils1.pas"/>
+        <DCCReference Include="..\TestScripts\Names Overloading\ASTTest.NamesOverloading1.pas"/>
+        <DCCReference Include="..\TestScripts\Names Overloading\ASTTest.NamesOverloading2.pas"/>
+        <DCCReference Include="..\TestScripts\Names Overloading\ASTTest.NamesOverloading.Prop1.pas"/>
+        <DCCReference Include="..\TestScripts\Names Overloading\ASTTest.NamesOverloading.DirsAsFields.pas"/>
+        <DCCReference Include="..\TestScripts\Names Overloading\ASTTest.NamesOverloading.DirsAsProps.pas"/>
+        <DCCReference Include="..\TestScripts\Sets\ASTTest.Sets.ForInSet1.pas"/>
+        <DCCReference Include="..\TestScripts\Sets\ASTTest.Sets.ForInSet2.pas"/>
+        <DCCReference Include="..\TestScripts\Sets\ASTTest.Sets.ExplicitCast1.pas"/>
+        <DCCReference Include="..\TestScripts\Sets\ASTTest.Sets.ExplicitCast2.pas"/>
+        <DCCReference Include="..\TestScripts\Interfaces\ASTTest.Intf.MethodRedeclaration.pas"/>
+        <DCCReference Include="..\TestScripts\Interfaces\ASTTest.Intf.RefToProcAsInterface1.pas"/>
+        <DCCReference Include="..\TestScripts\Interfaces\ASTTest.Intf.MethodDelegation1.pas"/>
+        <DCCReference Include="..\TestScripts\Interfaces\ASTTest.Intf.MethodDelegation2.pas"/>
+        <DCCReference Include="..\TestScripts\Interfaces\ASTTest.Intf.Implements1.pas"/>
+        <DCCReference Include="..\TestScripts\Records\ASTTest.Records.CaseRecord2.pas"/>
+        <DCCReference Include="..\TestScripts\Records\ASTTest.Records.CaseRecord1.pas"/>
+        <DCCReference Include="..\TestScripts\Records\ASTTest.Records.StaticInit1.pas"/>
+        <DCCReference Include="..\TestScripts\Records\ASTTest.Records.StaticInit2.pas"/>
+        <DCCReference Include="..\TestScripts\Built-ins\ASTTest.Builtins.High1.pas"/>
+        <DCCReference Include="..\TestScripts\Built-ins\ASTTest.Builtins.Declared1.pas"/>
+        <DCCReference Include="..\TestScripts\Vars\ASTTest.Vars.TypeInfer1.pas"/>
+        <DCCReference Include="..\TestScripts\Vars\ASTTest.Vars.Absolute1.pas"/>
+        <DCCReference Include="..\TestScripts\Enums\ASTTest.Enums.ReservedNames1.pas"/>
+        <DCCReference Include="..\TestScripts\Enums\ASTTest.Enums.ForLowHigh.pas"/>
+        <DCCReference Include="..\TestScripts\Include\ASTTest.Include1.pas"/>
+        <DCCReference Include="..\TestScripts\Include\ASTTest.Include2.pas"/>
+        <DCCReference Include="..\TestScripts\Aliases\ASTTest.Aliases.StringTypeWithCodepage1.pas"/>
+        <DCCReference Include="..\TestScripts\Aliases\ASTTest.Aliases.Nested1.pas"/>
+        <DCCReference Include="..\TestScripts\Other\ASTTest.Other.Deprecated1.pas"/>
+        <DCCReference Include="..\TestScripts\Other\ASTTest.Other.Platform1.pas"/>
+        <DCCReference Include="..\TestScripts\Other\ASTTest.Other.PlatformAndDeprecatedMix.pas"/>
+        <DCCReference Include="..\TestScripts\Consts\ASTTest.Consts.DateTime1.pas"/>
+        <DCCReference Include="..\TestScripts\RTL\ASTTest.RTL.FileTypes1.pas"/>
+        <DCCReference Include="..\TestScripts\RTL\ASTTest.RTL.StrHelper1.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -193,6 +334,12 @@
                 </Excluded_Packages>
             </Delphi.Personality>
             <Deployment Version="5">
+                <DeployFile LocalName="Bin\DASTTestApp.exe" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="Win32">
+                        <RemoteName>DASTTestApp.exe</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="Win32\Debug\DASTTestApp.exe" Configuration="Debug" Class="ProjectOutput"/>
                 <DeployClass Name="AdditionalDebugSymbols">
                     <Platform Name="iOSSimulator">
@@ -305,6 +452,16 @@
                     </Platform>
                     <Platform Name="Android64">
                         <RemoteDir>res\values-v31</RemoteDir>
+                        <Operation>1</Operation>
+                    </Platform>
+                </DeployClass>
+                <DeployClass Name="AndroidSplashStylesV35">
+                    <Platform Name="Android">
+                        <RemoteDir>res\values-v35</RemoteDir>
+                        <Operation>1</Operation>
+                    </Platform>
+                    <Platform Name="Android64">
+                        <RemoteDir>res\values-v35</RemoteDir>
                         <Operation>1</Operation>
                     </Platform>
                 </DeployClass>

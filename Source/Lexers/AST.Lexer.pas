@@ -2,8 +2,6 @@
 
 interface
 
-{$I AST.Parser.Defines.inc}
-
 uses Classes, SysUtils;
 
 const
@@ -126,7 +124,6 @@ type
     fErrorState: TParserErrorState;
     fOmitted: string;
     fTokenIDGenerator: Integer;
-
   private
     function GetPosition: TTextPosition; inline;
     function GetLinePosition: TTextPosition; inline;
@@ -183,6 +180,8 @@ type
     property PrevPosition: TTextPosition read fPrevPostion;
     property LinePosition: TTextPosition read GetLinePosition;
     property IdentifireType: TIdentifierType read fIdentifireType;
+    property NextChar: Char read GetNextChar;
+    function TokenText(ATokenID: Integer): string; virtual; abstract;
     function TokenLexem(TokenID: Integer): string;
     function GetSubString(StartPos, EndPos: Integer): string;
     procedure GetIdentifier(var ID: TIdentifier);
@@ -192,6 +191,9 @@ type
   end;
 
 implementation
+
+uses
+  System.StrUtils;
 
 { TStringParser }
 
@@ -452,9 +454,11 @@ var
   SPos2, ReadedChars: integer;
   Ch: Char;
   NumberSymbols: TNumberSymbols;
+  LSepCount: Integer;
 begin
   NumberSymbols := [];
   ReadedChars := 0;
+  LSepCount := 0;
   Inc(SPos);
   Inc(ReadedChars);
   while SPos <= fLength do begin
@@ -472,12 +476,20 @@ begin
       if nsSign in NumberSymbols then Break;
       Include(NumberSymbols, nsSign);
     end else
+    if Ch = '_' then
+    begin
+      Inc(LSepCount);
+    end else
     if (Tokens[Ch].TokenType <> ttDigit) then Break;
     Inc(SPos);
     Inc(ReadedChars);
   end;
   // read identifier:
   fCurrentToken := Copy(fSource, SPos - ReadedChars, ReadedChars);
+
+  if LSepCount > 0 then
+    fCurrentToken := fCurrentToken.Replace('_', '' );
+
   if (nsPoint in NumberSymbols) or (nsExponent in NumberSymbols) then
     fIdentifireType := itFloat
   else
@@ -777,7 +789,7 @@ function TGenericLexer.GetNextTokenId: Integer;
 begin
   Result := MoveNextInternal();
   fAmbiguousTokenId := Result;
-  if CurToken.TokenClass = tcWeakKeyword then
+  if Assigned(CurToken) and (CurToken.TokenClass = tcWeakKeyword) then
   begin
     fCurrentTokenId := fIdentifireId;
     fIdentifireType := itIdentifier;
